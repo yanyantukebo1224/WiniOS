@@ -28,6 +28,7 @@ jobs:
       - name: Install Build Tools
         run: |
           brew install ninja cmake
+          python3 -m pip install --break-system-packages packaging || pip3 install packaging || true
 
       - name: Build FEXCore for iOS
         run: |
@@ -40,6 +41,8 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
             -DCMAKE_BUILD_TYPE=Release \
+            -DTUNE_CPU=none \
+            -DTUNE_ARCH=generic \
             -DBUILD_TESTING=OFF \
             -DENABLE_LTO=OFF \
             -DENABLE_ASSERTIONS=OFF \
