@@ -96,8 +96,14 @@ jobs:
         run: |
           chmod -R +x build/ || true
           mkdir -p app/Madeira
-          if [ -f "app/libdxmt_unix.a" ] && [ ! -f "app/Madeira/libdxmt_combined.a" ]; then
-            cp app/libdxmt_unix.a app/Madeira/libdxmt_combined.a
+          if [ -f "app/libdxmt_unix.a" ]; then
+            echo "Combining libdxmt_unix.a with LLVM static libs..."
+            LLVM_LIBS=$(find /opt/homebrew/opt/llvm/lib -name "libLLVM*.a" 2>/dev/null | tr '\n' ' ')
+            if [ -n "$LLVM_LIBS" ]; then
+              xcrun -sdk iphoneos libtool -static -o app/Madeira/libdxmt_combined.a app/libdxmt_unix.a $LLVM_LIBS 2>/dev/null || cp app/libdxmt_unix.a app/Madeira/libdxmt_combined.a
+            else
+              cp app/libdxmt_unix.a app/Madeira/libdxmt_combined.a
+            fi
           fi
           # Run individual component builds if their base libs need assembly
           if [ -f "build/wineserver/build.sh" ]; then
@@ -122,6 +128,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CLANG_CXX_LANGUAGE_STANDARD="c++20" \
+            OTHER_LDFLAGS="\$(inherited) -L/opt/homebrew/opt/llvm/lib" \
             ONLY_ACTIVE_ARCH=NO
 
       - name: Package into IPA
