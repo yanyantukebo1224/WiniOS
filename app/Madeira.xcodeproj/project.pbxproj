@@ -55,12 +55,14 @@
 		A1000300 /* GameModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000300 /* GameModel.swift */; };
 		A1000301 /* SteamDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000301 /* SteamDownloader.swift */; };
 		A1000302 /* GameHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000302 /* GameHubView.swift */; };
+		A1000303 /* HardwareControllerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000303 /* HardwareControllerManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A2000300 /* GameModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/GameModel.swift"; sourceTree = "<group>"; };
 		A2000301 /* SteamDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/SteamDownloader.swift"; sourceTree = "<group>"; };
 		A2000302 /* GameHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/GameHubView.swift"; sourceTree = "<group>"; };
+		A2000303 /* HardwareControllerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/HardwareControllerManager.swift"; sourceTree = "<group>"; };
 		A2000001 /* MadeiraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MadeiraApp.swift; sourceTree = "<group>"; };
 		A2000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A2000003 /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 				A2000300 /* GameModel.swift */,
 				A2000301 /* SteamDownloader.swift */,
 				A2000302 /* GameHubView.swift */,
+				A2000303 /* HardwareControllerManager.swift */,
 			);
 			path = Madeira;
 			sourceTree = "<group>";
@@ -335,6 +338,7 @@
 				A1000300 /* GameModel.swift in Sources */,
 				A1000301 /* SteamDownloader.swift in Sources */,
 				A1000302 /* GameHubView.swift in Sources */,
+				A1000303 /* HardwareControllerManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
