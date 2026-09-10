@@ -32,6 +32,7 @@ static void wine_log_msg_impl(const char *fmt, ...) {
         fprintf(g_ws_bridge_log, "[%02d:%02d:%02d.%03d] %s\n",
                 tm.tm_hour, tm.tm_min, tm.tm_sec, (int)(tv.tv_usec/1000), buf);
         fflush(g_ws_bridge_log);
+        fsync(fileno(g_ws_bridge_log));
     }
     pthread_mutex_unlock(&g_ws_bridge_log_mutex);
 }
@@ -85,10 +86,11 @@ static void *wineserver_thread_func(void *arg) {
 
         // Redirect wineserver stderr to log file
         {
-            int logfd = open(logPath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            int logfd = open(logPath.UTF8String, O_WRONLY | O_CREAT | O_APPEND | O_SYNC, 0644);
             if (logfd >= 0) {
                 dup2(logfd, STDERR_FILENO);
                 close(logfd);
+                setvbuf(stderr, NULL, _IONBF, 0);
             }
         }
 

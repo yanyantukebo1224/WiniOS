@@ -592,11 +592,13 @@ static void *wine_process_thread(void *arg) {
         {
             NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
             NSString *logPath2 = [docs stringByAppendingPathComponent:@"madeira-log.txt"];
-            int logfd = open(logPath2.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            int logfd = open(logPath2.UTF8String, O_WRONLY | O_CREAT | O_APPEND | O_SYNC, 0644);
             if (logfd >= 0) {
                 dup2(logfd, STDERR_FILENO);
                 dup2(logfd, STDOUT_FILENO);
                 close(logfd);
+                setvbuf(stderr, NULL, _IONBF, 0);
+                setvbuf(stdout, NULL, _IONBF, 0);
             }
         }
 

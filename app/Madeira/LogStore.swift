@@ -8,6 +8,7 @@ final class LogStore: ObservableObject {
     @Published var entries: [LogEntry] = []
 
     private let logFileURL: URL
+    private let latestLogURL: URL
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
@@ -61,23 +62,38 @@ final class LogStore: ObservableObject {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         logFileURL = docs.appendingPathComponent("madeira-log.txt")
 
-        // ml601: ROTATE, don't destroy.
-        //
-        // This used to truncate unconditionally, so relaunching the app before
-        // pulling wiped the previous run. That cost us the first run in which
-        // Steam's Library view actually rendered content (2026-08-09) — a result
-        // we had never seen before and could not get back. Runs here are
-        // expensive and often not reproducible on demand, so the previous log is
-        // worth one file's worth of disk.
-        //
-        // Pull the previous run with the usual devicectl command, substituting
-        // Documents/madeira-log.prev.txt for Documents/madeira-log.txt.
+        // Ensure Logs directory exists for easy user browsing in Files app
+        let logsDir = docs.appendingPathComponent("Logs")
+        let historyDir = logsDir.appendingPathComponent("history")
+        try? FileManager.default.createDirectory(at: historyDir, withIntermediateDirectories: true)
+        let latestURL = logsDir.appendingPathComponent("latest-run.log")
+        latestLogURL = latestURL
+
+        // Rotate previous log to both madeira-log.prev.txt and Logs/history/
         let prevLogURL = docs.appendingPathComponent("madeira-log.prev.txt")
         if FileManager.default.fileExists(atPath: logFileURL.path) {
+            let backupFormatter = DateFormatter()
+            backupFormatter.dateFormat = "yyyyMMdd-HHmmss"
+            let stamp = backupFormatter.string(from: Date())
+            let historyURL = historyDir.appendingPathComponent("run-\(stamp).log")
+            
+            // Only archive if there is content in the previous log
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path),
+               let size = attrs[.size] as? UInt64, size > 0 {
+                try? FileManager.default.copyItem(at: logFileURL, to: historyURL)
+            }
+
             try? FileManager.default.removeItem(at: prevLogURL)
             try? FileManager.default.moveItem(at: logFileURL, to: prevLogURL)
         }
         try? "".write(to: logFileURL, atomically: true, encoding: .utf8)
+        
+        // Keep latest-run.log in Logs/ folder for one-tap access in Files app.
+        // Hardlink ensures byte-for-byte real-time sync with madeira-log.txt without overhead.
+        try? FileManager.default.removeItem(at: latestURL)
+        if link(logFileURL.path, latestURL.path) != 0 {
+            try? "".write(to: latestURL, atomically: true, encoding: .utf8)
+        }
 
         // Start batch flush timer on main thread. Interval depends on uiPaused.
         DispatchQueue.main.async {
@@ -264,6 +280,7 @@ final class LogStore: ObservableObject {
         stateLock.unlock()
         entries.removeAll()
         try? "".write(to: logFileURL, atomically: true, encoding: .utf8)
+        try? "".write(to: latestLogURL, atomically: true, encoding: .utf8)
     }
 
     /// Write to file (called from `log()` for Swift-side messages so they
@@ -271,11 +288,26 @@ final class LogStore: ObservableObject {
     /// reader).
     private func appendToFile(_ message: String, level: LogEntry.Level = .info) {
         let line = "[\(dateFormatter.string(from: Date()))] [\(level.rawValue)] \(message)\n"
-        if let data = line.data(using: .utf8) {
-            if let handle = try? FileHandle(forWritingTo: logFileURL) {
-                handle.seekToEndOfFile()
-                handle.write(data)
-                handle.closeFile()
+        guard let data = line.data(using: .utf8) else { return }
+        
+        if let handle = try? FileHandle(forWritingTo: logFileURL) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.synchronizeFile()
+            try? handle.close()
+        }
+        
+        // If latestLogURL is not hardlinked (fallback mode), write to it too
+        if let st1 = try? FileManager.default.attributesOfItem(atPath: logFileURL.path),
+           let st2 = try? FileManager.default.attributesOfItem(atPath: latestLogURL.path),
+           let ino1 = st1[.systemFileNumber] as? UInt,
+           let ino2 = st2[.systemFileNumber] as? UInt,
+           ino1 != ino2 {
+            if let handle2 = try? FileHandle(forWritingTo: latestLogURL) {
+                handle2.seekToEndOfFile()
+                handle2.write(data)
+                try? handle2.synchronizeFile()
+                try? handle2.close()
             }
         }
     }
