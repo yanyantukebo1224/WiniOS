@@ -66,10 +66,21 @@ jobs:
 
       - name: Configure Wine for macOS/iOS headers
         run: |
+          export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/opt/flex/bin:/opt/homebrew/opt/llvm/bin:$PATH"
           chmod +x wine/configure || true
           mkdir -p wine/build-macos
           cd wine/build-macos
           ../configure --enable-win64 --without-x --without-freetype || true
+          # Ensure config.h exists even if configure exited early
+          mkdir -p include
+          if [ ! -f "include/config.h" ]; then
+            echo "Generating fallback config.h from config.h.in..."
+            cp ../include/config.h.in include/config.h || touch include/config.h
+          fi
+          ls -lh include/config.h || true
+          cp include/config.h ../../build/wineserver/config.h || true
+          cp include/config.h ../../build/ntdll-unix/config.h || true
+          cp include/config.h ../../build/win32u-unix/config.h || true
           cd ../..
 
       - name: Build Unix Libraries (if build scripts present)

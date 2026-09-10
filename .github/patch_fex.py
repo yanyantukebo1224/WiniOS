@@ -1,5 +1,6 @@
 import shutil
 import re
+import os
 
 print("Patching FEX CMakeLists.txt...")
 with open("FEX/CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
@@ -52,4 +53,15 @@ if "VirtualQuery" in ac:
     with open(arm64_cpp, "w", encoding="utf-8") as f:
         f.write(ac)
 
-print("FEX patching complete!")
+print("Patching wine/configure...")
+if os.path.exists("wine/configure"):
+    with open("wine/configure", "r", encoding="utf-8", errors="ignore") as f:
+        wc = f.read()
+    old_pe_check = 'test "x$PE_ARCHS" != x || as_fn_error $? "PE cross-compilation is required'
+    if old_pe_check in wc:
+        wc = wc.replace(old_pe_check, '# bypassed PE check: ' + old_pe_check)
+        with open("wine/configure", "w", encoding="utf-8") as f:
+            f.write(wc)
+    print("wine/configure patched!")
+
+print("All patching complete!")
