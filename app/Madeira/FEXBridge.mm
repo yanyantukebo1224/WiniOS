@@ -10,6 +10,8 @@
 #undef DEBUG
 #endif
 
+#include "AtomicRefPolyfill.h"
+
 #include <FEXCore/Config/Config.h>
 #include <FEXCore/Core/Context.h>
 #include <FEXCore/Core/CoreState.h>

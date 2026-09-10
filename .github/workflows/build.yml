@@ -33,11 +33,21 @@ jobs:
       - name: Build FEXCore for iOS
         run: |
           python3 -c '
+          import shutil
           with open("FEX/CMakeLists.txt", "r") as f:
               s = f.read()
           s = s.replace("string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} processor)", "set(CMAKE_SYSTEM_PROCESSOR \"arm64\")\nstring(TOLOWER \"${CMAKE_SYSTEM_PROCESSOR}\" processor)")
           with open("FEX/CMakeLists.txt", "w") as f:
               f.write(s)
+
+          shutil.copyfile("app/Madeira/AtomicRefPolyfill.h", "FEX/FEXCore/include/FEXCore/Utils/AtomicRefPolyfill.h")
+          for p in ["FEX/FEXCore/include/FEXCore/Utils/SpinWaitLock.h", "FEX/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h", "FEX/FEXCore/include/FEXCore/Utils/SHMStats.h"]:
+              with open(p, "r") as f:
+                  c = f.read()
+              if "AtomicRefPolyfill.h" not in c:
+                  c = "#include <FEXCore/Utils/AtomicRefPolyfill.h>\n" + c
+                  with open(p, "w") as f:
+                      f.write(c)
           '
           mkdir -p FEX/build-ios
           cd FEX/build-ios
@@ -94,6 +104,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
+            CLANG_CXX_LANGUAGE_STANDARD="c++20" \
             ONLY_ACTIVE_ARCH=NO
 
       - name: Package into IPA
