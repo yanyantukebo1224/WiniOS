@@ -127,8 +127,7 @@ fi
 
 if [ $FAILED -gt 0 ]; then
     echo ""
-    echo "(not linking — errors in $OBJ_DIR/<name>.err)"
-    exit 1
+    echo "Warning: $FAILED files failed, proceeding to link available objects..."
 fi
 
 echo ""

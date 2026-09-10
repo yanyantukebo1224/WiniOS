@@ -159,17 +159,8 @@ fi
 
 echo ""
 echo "=== Building libntdll_unix.a ==="
-ar rcs "$OBJ_DIR/libntdll_unix.a" \
-    "$OBJ_DIR/audio_null_ios.o" "$OBJ_DIR/nsi_unixlib_ios.o" \
-    "$OBJ_DIR/gnutls_symtab_ios.o" "$OBJ_DIR/ws2_32_unixlib.o" \
-    "$OBJ_DIR/bcrypt_unixlib.o" "$OBJ_DIR/secur32_unixlib.o" "$OBJ_DIR/crypt32_unixlib.o" \
-    "$OBJ_DIR/dwrite_unixlib.o" \
-    "$OBJ_DIR/cdrom.o" "$OBJ_DIR/debug.o" "$OBJ_DIR/env.o" "$OBJ_DIR/file.o" \
-    "$OBJ_DIR/loader.o" "$OBJ_DIR/loadorder.o" "$OBJ_DIR/process.o" "$OBJ_DIR/registry.o" \
-    "$OBJ_DIR/security.o" "$OBJ_DIR/serial.o" "$OBJ_DIR/server.o" \
-    "$OBJ_DIR/signal_arm.o" "$OBJ_DIR/signal_arm64.o" "$OBJ_DIR/signal_i386.o" "$OBJ_DIR/signal_x86_64.o" \
-    "$OBJ_DIR/socket.o" "$OBJ_DIR/sync.o" "$OBJ_DIR/syscall.o" "$OBJ_DIR/system.o" \
-    "$OBJ_DIR/tape.o" "$OBJ_DIR/thread.o" "$OBJ_DIR/virtual.o"
+OBJ_LIST=$(find "$OBJ_DIR" -name "*.o")
+ar rcs "$OBJ_DIR/libntdll_unix.a" $OBJ_LIST
 
 echo "Copying to app..."
 cp "$OBJ_DIR/libntdll_unix.a" "$APP_LIB"

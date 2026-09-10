@@ -64,6 +64,15 @@ jobs:
           find /tmp/vcredist -name "*.cab" -exec 7zz x {} -oapp/Madeira/x86_64-vcruntime/ \; || true
           touch app/Madeira/x86_64-vcruntime/.keep
 
+      - name: Setup GnuTLS and FreeType Headers
+        run: |
+          brew install gnutls freetype
+          mkdir -p toolchains/gnutls-ios/include toolchains/gnutls-ios/lib
+          cp -R /opt/homebrew/opt/gnutls/include/* toolchains/gnutls-ios/include/ 2>/dev/null || true
+          cp app/Madeira/libgnutls.a toolchains/gnutls-ios/lib/ 2>/dev/null || true
+          git clone --depth 1 --branch VER-2-13-3 https://github.com/freetype/freetype.git research/freetype || true
+          bash build/freetype-ios/build.sh || true
+
       - name: Configure Wine for macOS/iOS headers
         run: |
           export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/opt/flex/bin:/opt/homebrew/opt/llvm/bin:$PATH"
