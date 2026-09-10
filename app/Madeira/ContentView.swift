@@ -848,6 +848,7 @@ struct ContentView: View {
     @ObservedObject private var input = InputSettings.shared
     @State private var pointerPanel = false
     @State private var showGameHub = true // Default to GameHub launcher!
+    @State private var isFullScreen = false // Fullscreen toggle!
     @Namespace private var pointerNS
     /// .compact = iPhone landscape: game surface expands, arrow keys appear.
     @Environment(\.verticalSizeClass) private var vSizeClass
@@ -872,15 +873,15 @@ struct ContentView: View {
                             withAnimation { showGameHub = false }
                         }
                     )
-                } else if vSizeClass == .compact {
-                    landscapeBody
+                } else if isFullScreen || vSizeClass == .compact {
+                    fullScreenBody
                 } else {
                     portraitBody
                 }
             }
             .navigationTitle(showGameHub ? "WiniOS" : "Madeira")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(showGameHub || vSizeClass == .compact)
+            .navigationBarHidden(showGameHub || isFullScreen || vSizeClass == .compact)
             .toolbar {
                 if !showGameHub && vSizeClass != .compact {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -938,6 +939,20 @@ struct ContentView: View {
             HStack(spacing: 6) {
                 FPSOverlay()
                 Spacer()
+                Button {
+                    withAnimation { isFullScreen = true }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        Text("全画面")
+                    }
+                    .font(.caption).fontWeight(.bold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.cyan.opacity(0.3))
+                    .foregroundColor(.cyan)
+                    .cornerRadius(6)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.bottom, 4)
@@ -1010,6 +1025,56 @@ struct ContentView: View {
                     }
                     .frame(width: barW)
                 }
+            }
+        }
+        .ignoresSafeArea()
+        .background(Color.black)
+    }
+
+    /// Fullscreen mode: fills entire iPhone display with floating controls
+    private var fullScreenBody: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topTrailing) {
+                Color.black.ignoresSafeArea()
+                
+                MadeiraMetalView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear { TouchControlsHost.attach() }
+                    .onReceive(NotificationCenter.default.publisher(
+                        for: UIDevice.orientationDidChangeNotification)) { _ in
+                        TouchControlsHost.attach()
+                    }
+                
+                // Floating Action Controls
+                HStack(spacing: 10) {
+                    FPSOverlay(compact: true)
+                    
+                    Button {
+                        MetalBackedView.toggleKeyboard()
+                    } label: {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(Circle())
+                    }
+                    
+                    Button {
+                        withAnimation {
+                            isFullScreen = false
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(Circle())
+                    }
+                }
+                .padding(.top, 44)
+                .padding(.trailing, 16)
             }
         }
         .ignoresSafeArea()

@@ -10,6 +10,8 @@ public final class SteamDownloader: ObservableObject {
     @Published public var downloadProgress: Double = 0.0
     @Published public var statusMessage: String = ""
     @Published public var downloadSpeed: String = ""
+    @Published public var searchResults: [SteamSearchResult] = []
+    @Published public var isSearching: Bool = false
     
     private var downloadTask: URLSessionDownloadTask?
     private var observation: NSKeyValueObservation?
@@ -136,5 +138,42 @@ public final class SteamDownloader: ObservableObject {
             statusMessage = "Extraction failed: \(error.localizedDescription)"
             completion(.failure(error))
         }
+    }
+    
+    /// Searches Steam store for games matching query
+    public func searchSteam(query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            self.searchResults = []
+            return
+        }
+        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://store.steampowered.com/api/storesearch/?term=\(encoded)&l=japanese&cc=JP") else { return }
+        
+        isSearching = true
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            DispatchQueue.main.async {
+                self?.isSearching = false
+                guard let data = data else { return }
+                struct StoreSearchResp: Codable {
+                    let items: [SteamSearchResult]
+                }
+                if let decoded = try? JSONDecoder().decode(StoreSearchResp.self, from: data) {
+                    self?.searchResults = decoded.items
+                }
+            }
+        }.resume()
+    }
+}
+
+/// Represents a search result item from Steam Store API.
+public struct SteamSearchResult: Identifiable, Codable {
+    public var id: Int // AppID
+    public var name: String
+    public var tiny_image: String?
+    
+    public var coverUrl: URL? {
+        URL(string: "https://steamcdn-a.akamaihd.net/steam/apps/\(id)/library_600x900_2x.jpg")
+            ?? URL(string: tiny_image ?? "")
     }
 }

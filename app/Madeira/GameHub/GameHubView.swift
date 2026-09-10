@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Android GameHub / Steam Big Picture-style console game launcher for iOS.
 public struct GameHubView: View {
@@ -16,6 +17,12 @@ public struct GameHubView: View {
     @State private var featuredGame: GameItem? = nil
     @State private var isJitAttached: Bool = isDebuggerAttached()
     @State private var showJitDetailsAlert = false
+    
+    // File Importer for direct EXE / ZIP loading
+    @State private var showFilePicker = false
+    @State private var importAlertTitle = ""
+    @State private var importAlertMessage = ""
+    @State private var showImportAlert = false
     
     public init(
         onLaunchGame: @escaping (GameItem) -> Void,
@@ -81,7 +88,32 @@ public struct GameHubView: View {
             }
         }
         .sheet(isPresented: $showDownloadSheet) {
-            SteamDownloadModal()
+            SteamDownloadModal(onLaunchSteam: {
+                launchSteamClient()
+            })
+        }
+        .fileImporter(
+            isPresented: $showFilePicker,
+            allowedContentTypes: [
+                UTType(filenameExtension: "exe") ?? .item,
+                UTType(filenameExtension: "zip") ?? .archive,
+                .item
+            ],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let url):
+                importFile(from: url)
+            case .failure(let error):
+                importAlertTitle = "ファイル選択エラー"
+                importAlertMessage = error.localizedDescription
+                showImportAlert = true
+            }
+        }
+        .alert(importAlertTitle, isPresented: $showImportAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importAlertMessage)
         }
         .alert("JIT (Just-In-Time) コンパイルについて", isPresented: $showJitDetailsAlert) {
             Button("OK", role: .cancel) {}
@@ -94,6 +126,66 @@ public struct GameHubView: View {
                 featuredGame = manager.games.first(where: { $0.isFavorite }) ?? manager.games.first
             }
         }
+    }
+    
+    // MARK: - Import File Handler
+    private func importFile(from url: URL) {
+        guard url.startAccessingSecurityScopedResource() else {
+            importAlertTitle = "アクセス拒否"
+            importAlertMessage = "選択されたファイルへのアクセス権限を取得できませんでした。"
+            showImportAlert = true
+            return
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+        
+        guard let doc = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let fm = FileManager.default
+        let gamesDir = doc.appendingPathComponent("wine/drive_c/Games")
+        try? fm.createDirectory(at: gamesDir, withIntermediateDirectories: true)
+        
+        let filename = url.lastPathComponent
+        let ext = url.pathExtension.lowercased()
+        let gameTitle = url.deletingPathExtension().lastPathComponent
+        
+        let destFolder = gamesDir.appendingPathComponent(gameTitle)
+        try? fm.createDirectory(at: destFolder, withIntermediateDirectories: true)
+        let destFile = destFolder.appendingPathComponent(filename)
+        
+        do {
+            if fm.fileExists(atPath: destFile.path) {
+                try fm.removeItem(at: destFile)
+            }
+            try fm.copyItem(at: url, to: destFile)
+            
+            let wineExePath = "C:\\Games\\\(gameTitle)\\\(filename)"
+            let newItem = GameItem(
+                title: gameTitle,
+                exePath: wineExePath,
+                category: "Imported"
+            )
+            manager.addGame(newItem)
+            selectedGame = newItem
+            
+            importAlertTitle = "インポート完了！"
+            importAlertMessage = "「\(filename)」を Wine 環境（\(wineExePath)）に追加しました！そのまま起動できます。"
+            showImportAlert = true
+        } catch {
+            importAlertTitle = "インポート失敗"
+            importAlertMessage = error.localizedDescription
+            showImportAlert = true
+        }
+    }
+    
+    /// Launch official Wine Steam client
+    private func launchSteamClient() {
+        let steam = GameItem(
+            title: "Steam",
+            exePath: "steam.exe",
+            arguments: "-no-browser +open games",
+            steamAppId: nil,
+            category: "Steam"
+        )
+        onLaunchGame(steam)
     }
     
     // MARK: - JIT Banner
@@ -163,11 +255,25 @@ public struct GameHubView: View {
             .cornerRadius(8)
             .frame(maxWidth: 220)
             
-            // Download Button
+            // Open EXE Button (Direct File Import)
+            Button(action: { showFilePicker = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.badge.plus")
+                    Text("EXEを開く")
+                }
+                .font(.subheadline).fontWeight(.semibold)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color.purple)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+            }
+            
+            // Steam / Download Button
             Button(action: { showDownloadSheet = true }) {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.down.circle.fill")
-                    Text("Download")
+                    Text("Steam / DL")
                 }
                 .font(.subheadline).fontWeight(.semibold)
                 .padding(.horizontal, 12)
@@ -535,71 +641,197 @@ struct AddGameModal: View {
 struct SteamDownloadModal: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var downloader = SteamDownloader.shared
+    @ObservedObject private var manager = GameHubManager.shared
     
-    @State private var downloadType = 0 // 0: URL, 1: Steam AppID
+    var onLaunchSteam: () -> Void = {}
+    
+    @State private var selectedTab = 0 // 0: Steam Client, 1: Steam Search, 2: Direct URL
+    
+    // Steam Search states
+    @State private var searchQuery = ""
+    @State private var addedGameNotice = ""
+    
+    // Direct URL states
     @State private var urlInput = ""
-    @State private var gameTitle = ""
-    @State private var appIdInput = ""
+    @State private var directGameTitle = ""
+    @State private var directAppId = ""
     
     var body: some View {
         NavigationView {
-            Form {
-                Section("Download Source") {
-                    Picker("Type", selection: $downloadType) {
-                        Text("Direct URL (ZIP)").tag(0)
-                        Text("Steam AppID (Depot)").tag(1)
-                    }
-                    .pickerStyle(.segmented)
+            VStack(spacing: 0) {
+                Picker("Tab", selection: $selectedTab) {
+                    Text("Steam Client").tag(0)
+                    Text("Steam Search").tag(1)
+                    Text("Direct URL").tag(2)
                 }
+                .pickerStyle(.segmented)
+                .padding()
                 
-                if downloadType == 0 {
-                    Section("Game Package URL") {
-                        TextField("Game Title", text: $gameTitle)
-                        TextField("https://.../game.zip", text: $urlInput)
-                            .keyboardType(.URL)
-                            .autocapitalization(.none)
-                        Text("Supports direct download links from Google Drive, Dropbox, or custom servers. Will be extracted directly to Wine's Program Files.")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                } else {
-                    Section("Steam Depot Downloader") {
-                        TextField("Steam AppID (e.g. 1229490)", text: $appIdInput)
-                            .keyboardType(.numberPad)
-                        TextField("Game Title", text: $gameTitle)
-                        Text("Downloads game content directly from Steam CDN into Wine container.")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                }
-                
-                Section {
-                    Button("Start Download") {
-                        if downloadType == 0 {
-                            downloader.downloadAndInstallFromUrl(
-                                urlStr: urlInput,
-                                gameTitle: gameTitle.isEmpty ? "Imported Game" : gameTitle,
-                                steamAppId: appIdInput.isEmpty ? nil : appIdInput
-                            ) { _ in
+                if selectedTab == 0 {
+                    // MARK: - Steam Client Launcher
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            Image(systemName: "desktopcomputer")
+                                .font(.system(size: 64))
+                                .foregroundColor(.cyan)
+                                .padding(.top, 30)
+                            
+                            Text("Official Steam Client (Wine)")
+                                .font(.title2).fontWeight(.black)
+                                .foregroundColor(.white)
+                            
+                            Text("Wine デスクトップ上で本物の Steam.exe を起動します。\nご自身の Steam アカウントでログインし、ライブラリの閲覧やゲームの公式インストール・クラウドセーブが利用可能です。")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                            
+                            Button(action: {
+                                onLaunchSteam()
                                 dismiss()
+                            }) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "play.fill")
+                                    Text("Steam クライアントを起動")
+                                }
+                                .font(.headline).fontWeight(.bold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.cyan)
+                                .foregroundColor(.black)
+                                .cornerRadius(12)
                             }
-                        } else {
-                            // Steam AppID URL or Depot
-                            let steamUrl = "https://steamcdn-a.akamaihd.net/steam/apps/\(appIdInput)/header.jpg"
-                            downloader.downloadAndInstallFromUrl(
-                                urlStr: urlInput.isEmpty ? steamUrl : urlInput,
-                                gameTitle: gameTitle.isEmpty ? "Steam Game \(appIdInput)" : gameTitle,
-                                steamAppId: appIdInput
-                            ) { _ in
-                                dismiss()
-                            }
+                            .padding(.horizontal, 30)
+                            .padding(.top, 10)
                         }
                     }
-                    .disabled(downloader.isDownloading)
+                } else if selectedTab == 1 {
+                    // MARK: - Steam Store Search
+                    VStack(spacing: 12) {
+                        HStack {
+                            Image(systemName: "magnifyingglass").foregroundColor(.gray)
+                            TextField("Steam ゲーム名で検索 (例: Vampire Survivors)...", text: $searchQuery)
+                                .foregroundColor(.white)
+                                .onSubmit {
+                                    downloader.searchSteam(query: searchQuery)
+                                }
+                            if !searchQuery.isEmpty {
+                                Button("検索") {
+                                    downloader.searchSteam(query: searchQuery)
+                                }
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(.cyan)
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                        
+                        if !addedGameNotice.isEmpty {
+                            Text(addedGameNotice)
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(.green)
+                                .padding(.horizontal)
+                        }
+                        
+                        if downloader.isSearching {
+                            ProgressView("Steam ストアを検索中...")
+                                .padding()
+                            Spacer()
+                        } else if downloader.searchResults.isEmpty {
+                            VStack(spacing: 10) {
+                                Spacer()
+                                Image(systemName: "gamecontroller")
+                                    .font(.system(size: 48)).foregroundColor(.gray)
+                                Text("ゲーム名を入力して検索してください")
+                                    .font(.subheadline).foregroundColor(.gray)
+                                Spacer()
+                            }
+                        } else {
+                            List(downloader.searchResults) { item in
+                                HStack(spacing: 14) {
+                                    AsyncImage(url: item.coverUrl) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().scaledToFill()
+                                        } else {
+                                            Color.gray.opacity(0.3)
+                                        }
+                                    }
+                                    .frame(width: 60, height: 80)
+                                    .cornerRadius(6)
+                                    
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(item.name)
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                            .lineLimit(2)
+                                        Text("AppID: \(item.id)")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Button("追加") {
+                                        let newGame = GameItem(
+                                            title: item.name,
+                                            exePath: "steam.exe -applaunch \(item.id)",
+                                            steamAppId: "\(item.id)",
+                                            category: "Steam"
+                                        )
+                                        manager.addGame(newGame)
+                                        addedGameNotice = "「\(item.name)」をライブラリに追加しました！"
+                                    }
+                                    .font(.caption).fontWeight(.bold)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.cyan)
+                                    .foregroundColor(.black)
+                                    .cornerRadius(6)
+                                }
+                                .listRowBackground(Color.clear)
+                            }
+                            .listStyle(.plain)
+                        }
+                    }
+                } else {
+                    // MARK: - Direct URL Downloader
+                    Form {
+                        Section("Game Details") {
+                            TextField("Game Title", text: $directGameTitle)
+                            TextField("Steam AppID (Optional, for cover)", text: $directAppId)
+                                .keyboardType(.numberPad)
+                        }
+                        
+                        Section("Download URL") {
+                            TextField("https://.../game.zip", text: $urlInput)
+                                .keyboardType(.URL)
+                                .autocapitalization(.none)
+                            Text("Google Drive、Dropbox、直リンク ZIP から Wine の Program Files に直接ダウンロード＆自動展開します。")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        
+                        Section {
+                            Button("ダウンロード開始") {
+                                downloader.downloadAndInstallFromUrl(
+                                    urlStr: urlInput,
+                                    gameTitle: directGameTitle.isEmpty ? "Downloaded Game" : directGameTitle,
+                                    steamAppId: directAppId.isEmpty ? nil : directAppId
+                                ) { _ in
+                                    dismiss()
+                                }
+                            }
+                            .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || downloader.isDownloading)
+                        }
+                    }
                 }
             }
-            .navigationTitle("Download Game")
+            .navigationTitle("Steam & Download")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") { dismiss() }
+                    Button("閉じる") { dismiss() }
                 }
             }
         }
