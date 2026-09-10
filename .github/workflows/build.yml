@@ -27,13 +27,14 @@ jobs:
 
       - name: Install Build Tools
         run: |
-          brew install ninja cmake
+          brew install ninja cmake llvm
+          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
           python3 -m pip install --break-system-packages packaging || pip3 install packaging || true
 
       - name: Build FEXCore for iOS
         run: |
           python3 -c '
-          import shutil
+          import shutil, re
           with open("FEX/CMakeLists.txt", "r") as f:
               s = f.read()
           s = s.replace("string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} processor)", "set(CMAKE_SYSTEM_PROCESSOR \"arm64\")\nstring(TOLOWER \"${CMAKE_SYSTEM_PROCESSOR}\" processor)")
@@ -59,6 +60,25 @@ jobs:
               cc = cc.replace(close_block, close_block + "\n#endif")
               with open(core_cpp, "w") as f:
                   f.write(cc)
+
+          arm64_cpp = "FEX/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp"
+          with open(arm64_cpp, "r") as f:
+              ac = f.read()
+          if "VirtualQuery" in ac:
+              pat = r"static void IosLogUnimplementedCASPAL\([^{]*\{[\s\S]*?\n\}"
+              rep = """static void IosLogUnimplementedCASPAL(uint32_t Size, uint32_t AddressReg, const uint64_t* GPRs) {
+  static uint32_t reports = 0;
+  if (Size == 0 || (GPRs[AddressReg] & 15) == 0 || reports >= 8) {
+    return;
+  }
+  reports++;
+  LogMan::Msg::EFmt("[caspal128] MISALIGNED-UNSUPPORTED Size={} addrReg=x{} addr={:#x} misalign={} crosses16B={}",
+                    Size, AddressReg, GPRs[AddressReg], GPRs[AddressReg] & 15,
+                    (GPRs[AddressReg] & 15) ? "yes" : "no");
+}"""
+              ac = re.sub(pat, rep, ac)
+              with open(arm64_cpp, "w") as f:
+                  f.write(ac)
           '
           mkdir -p FEX/build-ios
           cd FEX/build-ios
@@ -76,6 +96,7 @@ jobs:
             -DENABLE_ASSERTIONS=OFF \
             ..
           ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes_128bit xxhash softfloat_3e || ninja -j$(sysctl -n hw.ncpu) FEXCore || true
+          ls -lh FEXCore/Source/libFEXCore*.a || true
           cd ../..
 
       - name: Fetch and Prepare VC++ Runtime
@@ -86,6 +107,13 @@ jobs:
           7zz x /tmp/vc_redist.x64.exe -o/tmp/vcredist || true
           find /tmp/vcredist -name "*.cab" -exec 7zz x {} -oapp/Madeira/x86_64-vcruntime/ \; || true
           touch app/Madeira/x86_64-vcruntime/.keep
+
+      - name: Configure Wine for macOS/iOS headers
+        run: |
+          mkdir -p wine/build-macos
+          cd wine/build-macos
+          ../configure --enable-win64 --without-x --without-freetype || true
+          cd ../..
 
       - name: Build Unix Libraries (if build scripts present)
         run: |
@@ -104,6 +132,7 @@ jobs:
           if [ -f "build/win32u-unix/build.sh" ]; then
             bash build/win32u-unix/build.sh || true
           fi
+          ls -lh app/Madeira/lib*.a || true
 
       - name: Build Madeira Xcode App
         run: |
