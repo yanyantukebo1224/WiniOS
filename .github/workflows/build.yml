@@ -121,7 +121,6 @@ jobs:
 
       - name: Build Madeira Xcode App
         run: |
-          LLVM15_DIR=$(brew --prefix llvm@15)
           xcodebuild -project app/Madeira.xcodeproj \
             -scheme Madeira \
             -configuration Release \
@@ -131,10 +130,9 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CLANG_CXX_LANGUAGE_STANDARD="c++20" \
-            OTHER_LDFLAGS="\$(inherited) -L$LLVM15_DIR/lib" \
             ONLY_ACTIVE_ARCH=NO
 
-      - name: Package into IPA
+      - name: Package and Sanitize IPA
         run: |
           mkdir -p build/Payload
           APP_PATH=$(find build/DerivedData -name "Madeira.app" -type d | head -n 1)
@@ -143,6 +141,30 @@ jobs:
             exit 1
           fi
           cp -R "$APP_PATH" build/Payload/
+          
+          EXE="build/Payload/Madeira.app/Madeira"
+          echo "=== Inspecting initial dylib dependencies of $EXE ==="
+          otool -L "$EXE" || true
+          
+          # Sanitize host /opt/homebrew dylib references
+          mkdir -p "build/Payload/Madeira.app/Frameworks"
+          for dylib in $(otool -L "$EXE" | grep "/opt/homebrew" | awk '{print $1}'); do
+            echo "Found host dylib reference: $dylib"
+            if [[ "$dylib" == *"libunwind"* ]]; then
+              echo "Re-pointing libunwind to iOS system dynamic linker..."
+              install_name_tool -change "$dylib" "/usr/lib/system/libunwind.dylib" "$EXE" || true
+            else
+              BASENAME=$(basename "$dylib")
+              echo "Bundling $BASENAME into Frameworks..."
+              cp -f "$dylib" "build/Payload/Madeira.app/Frameworks/$BASENAME" || true
+              install_name_tool -change "$dylib" "@rpath/$BASENAME" "$EXE" || true
+            fi
+          done
+          install_name_tool -add_rpath "@executable_path/Frameworks" "$EXE" 2>/dev/null || true
+          
+          echo "=== Final sanitized dylib dependencies of $EXE ==="
+          otool -L "$EXE" || true
+          
           cd build
           zip -r -9 WiniOS.ipa Payload
 
