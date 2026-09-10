@@ -49,7 +49,7 @@ final class MetalHostView: UIView {
         // Switch emulator) sets exactly this pair on its layer.
         let syncSel = NSSelectorFromString("setDisplaySyncEnabled:")
         if metalLayer.responds(to: syncSel) {
-            metalLayer.perform(syncSel, with: NSNumber(value: false))
+            metalLayer.setValue(false, forKey: "displaySyncEnabled")
             LogStore.shared.log("MetalLayer: displaySyncEnabled=false (private API, MeloNX pattern)")
         }
         /* ml651: was hardcoded 60, which contradicted everything around it —
@@ -64,7 +64,7 @@ final class MetalHostView: UIView {
         let fpsSel = NSSelectorFromString("setNominalFramesPerSecond:")
         if metalLayer.responds(to: fpsSel) {
             let hz = UIScreen.main.maximumFramesPerSecond
-            metalLayer.perform(fpsSel, with: hz as NSNumber)
+            metalLayer.setValue(hz, forKey: "nominalFramesPerSecond")
             LogStore.shared.log("MetalLayer: ml651 nominalFPS=\(hz) (was hardcoded 60; "
                                 + "display link asks preferred=120)")
         }

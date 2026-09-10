@@ -30,6 +30,7 @@
 #include <sys/time.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <dlfcn.h>
 
 /* csops syscall — CS_DEBUGGED is the flag StikDebug JIT rides on. Declared by
  * hand for the same reason JITAllocator.c does: <sys/codesign.h> is not in the
@@ -40,7 +41,6 @@
 #ifndef CS_OPS_STATUS
 #define CS_OPS_STATUS 0
 #endif
-extern int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
 
 /* Wine-side typedefs we need without pulling in the whole win32u
  * headers (which collide with Apple framework types in Obj-C).
@@ -160,8 +160,11 @@ void winios_phase(const char *name)
  * a normal run (set while attached, clear after detach) — so this probe can
  * be trusted when it says "no change", which is the whole point. */
 static int winios_cs_debugged(void) {
+    typedef int (*csops_fn)(pid_t, unsigned int, void *, size_t);
+    csops_fn fn = (csops_fn)dlsym(RTLD_DEFAULT, "csops");
+    if (!fn) return -1;
     uint32_t flags = 0;
-    if (csops(getpid(), CS_OPS_STATUS, &flags, sizeof(flags)) != 0) return -1;
+    if (fn(getpid(), CS_OPS_STATUS, &flags, sizeof(flags)) != 0) return -1;
     return (flags & CS_DEBUGGED) ? 1 : 0;
 }
 static const char *winios_dbg_str(int v) {

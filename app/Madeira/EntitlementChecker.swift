@@ -2,23 +2,20 @@ import Foundation
 import Security
 
 private typealias SecTaskRef = OpaquePointer
-
-@_silgen_name("SecTaskCopyValueForEntitlement")
-private func _SecTaskCopyValueForEntitlement(
-    _ task: SecTaskRef,
-    _ entitlement: NSString,
-    _ error: NSErrorPointer
-) -> CFTypeRef?
-
-@_silgen_name("SecTaskCreateFromSelf")
-private func _SecTaskCreateFromSelf(
-    _ allocator: CFAllocator?
-) -> SecTaskRef?
+private typealias SecTaskCreateFromSelfFn = @convention(c) (CFAllocator?) -> SecTaskRef?
+private typealias SecTaskCopyValueForEntitlementFn = @convention(c) (SecTaskRef, CFString, UnsafeMutablePointer<Unmanaged<CFError>?>?) -> CFTypeRef?
 
 func checkAppEntitlement(_ ent: String) -> Bool {
-    guard let task = _SecTaskCreateFromSelf(nil) else { return false }
+    guard let createSym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SecTaskCreateFromSelf"),
+          let copySym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SecTaskCopyValueForEntitlement") else {
+        return false
+    }
 
-    guard let value = _SecTaskCopyValueForEntitlement(task, ent as NSString, nil) else {
+    let createFn = unsafeBitCast(createSym, to: SecTaskCreateFromSelfFn.self)
+    let copyFn = unsafeBitCast(copySym, to: SecTaskCopyValueForEntitlementFn.self)
+
+    guard let task = createFn(nil) else { return false }
+    guard let value = copyFn(task, ent as CFString, nil) else {
         return false
     }
 

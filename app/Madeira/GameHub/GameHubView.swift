@@ -14,6 +14,8 @@ public struct GameHubView: View {
     @State private var showAddGameSheet = false
     @State private var showDownloadSheet = false
     @State private var featuredGame: GameItem? = nil
+    @State private var isJitAttached: Bool = isDebuggerAttached()
+    @State private var showJitDetailsAlert = false
     
     public init(
         onLaunchGame: @escaping (GameItem) -> Void,
@@ -32,6 +34,9 @@ public struct GameHubView: View {
             VStack(spacing: 0) {
                 // Top Navigation Bar
                 headerBar
+                
+                // JIT status banner
+                jitBanner
                 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
@@ -78,9 +83,47 @@ public struct GameHubView: View {
         .sheet(isPresented: $showDownloadSheet) {
             SteamDownloadModal()
         }
+        .alert("JIT (Just-In-Time) コンパイルについて", isPresented: $showJitDetailsAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("現在 JIT が有効化されていません。\nGameHub でのゲーム追加や設定は利用可能ですが、Windows ゲームを高速実行するには JIT の有効化が必要です。\n\n【JIT有効化方法】\n・AltStore: アプリ長押し → Enable JIT\n・SideStore: JIT メニューから有効化\n・Jitterbug / StikDebug を使用")
+        }
         .onAppear {
+            isJitAttached = isDebuggerAttached()
             if featuredGame == nil {
                 featuredGame = manager.games.first(where: { $0.isFavorite }) ?? manager.games.first
+            }
+        }
+    }
+    
+    // MARK: - JIT Banner
+    @ViewBuilder
+    private var jitBanner: some View {
+        if !isJitAttached {
+            Button {
+                showJitDetailsAlert = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.yellow)
+                    Text("JIT未接続: ゲーム起動には JIT が必要です")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Spacer()
+                    Text("詳細")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.yellow.opacity(0.3))
+                        .foregroundColor(.yellow)
+                        .cornerRadius(4)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.25))
             }
         }
     }

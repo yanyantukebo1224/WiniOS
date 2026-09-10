@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <mach-o/dyld.h>
 #include <os/log.h>
+#include <dlfcn.h>
 
 // csops syscall - used to check CS_DEBUGGED flag
 #ifndef CS_DEBUGGED
@@ -22,7 +23,6 @@
 #ifndef CS_OPS_STATUS
 #define CS_OPS_STATUS 0
 #endif
-extern int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
 
 /* ml748: <mach/mach_vm.h> is "unsupported" on the iOS SDK, but these are
  * exported by libsystem_kernel and are the only calls that report a region's
@@ -423,8 +423,14 @@ void jit26_detach(void) {
 }
 
 bool jit_check_debugged(void) {
+    typedef int (*csops_fn)(pid_t, unsigned int, void *, size_t);
+    csops_fn fn = (csops_fn)dlsym(RTLD_DEFAULT, "csops");
+    if (!fn) {
+        jit_log("csops symbol not found, assuming not debugged");
+        return false;
+    }
     uint32_t flags = 0;
-    int result = csops(getpid(), CS_OPS_STATUS, &flags, sizeof(flags));
+    int result = fn(getpid(), CS_OPS_STATUS, &flags, sizeof(flags));
     if (result != 0) {
         jit_log("csops failed, assuming not debugged");
         return false;
