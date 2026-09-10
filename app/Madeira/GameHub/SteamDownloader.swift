@@ -99,11 +99,11 @@ public final class SteamDownloader: ObservableObject {
             try fm.createDirectory(at: targetDir, withIntermediateDirectories: true)
             
             // If single exe or file was downloaded, move it into target directory
-            let destFile = targetDir.appendingPathComponent(downloadedFile.lastPathComponent)
+            let destFile = targetDir.appendingPathComponent(archiveUrl.lastPathComponent)
             if fm.fileExists(atPath: destFile.path) {
                 try? fm.removeItem(at: destFile)
             }
-            try? fm.moveItem(at: downloadedFile, to: destFile)
+            try? fm.moveItem(at: archiveUrl, to: destFile)
             statusMessage = "Finalizing installation..."
             
             // Scan for candidate .exe
