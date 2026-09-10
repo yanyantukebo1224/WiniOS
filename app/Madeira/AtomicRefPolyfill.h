@@ -1,6 +1,8 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // AtomicRefPolyfill.h - Polyfill for std::atomic_ref on Apple Clang / iOS libc++
-#pragma once
+#ifndef FEX_ATOMIC_REF_POLYFILL_DEFINED
+#define FEX_ATOMIC_REF_POLYFILL_DEFINED
+
 #include <atomic>
 #include <cstdint>
 
@@ -46,3 +48,4 @@ struct atomic_ref {
 };
 }
 #endif
+#endif // FEX_ATOMIC_REF_POLYFILL_DEFINED

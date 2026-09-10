@@ -48,6 +48,17 @@ jobs:
                   c = "#include <FEXCore/Utils/AtomicRefPolyfill.h>\n" + c
                   with open(p, "w") as f:
                       f.write(c)
+
+          core_cpp = "FEX/FEXCore/Source/Interface/Core/Core.cpp"
+          with open(core_cpp, "r") as f:
+              cc = f.read()
+          old_block = "  /* iOS-Madeira ml316: report ExitToX64 FFS bypasses"
+          if old_block in cc and "#ifdef FEX_IOS_HOST\n  /* iOS-Madeira ml316" not in cc:
+              cc = cc.replace(old_block, "#ifdef FEX_IOS_HOST\n" + old_block)
+              close_block = "IosCbEntryLog[4], IosCbEntryLog[5], IosCbEntryLog[7]);\n    }\n  }"
+              cc = cc.replace(close_block, close_block + "\n#endif")
+              with open(core_cpp, "w") as f:
+                  f.write(cc)
           '
           mkdir -p FEX/build-ios
           cd FEX/build-ios
