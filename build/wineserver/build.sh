@@ -17,8 +17,8 @@ if [ ! -f "$OBJ_DIR/libwineserver.a" ]; then
     if [ -f "$APP_LIB" ]; then
         cp "$APP_LIB" "$OBJ_DIR/libwineserver.a"
     else
-        echo "ERROR: No base libwineserver.a found"
-        exit 1
+        echo "No base libwineserver.a found, creating new base..."
+        ar rcs "$OBJ_DIR/libwineserver.a"
     fi
 fi
 

@@ -50,12 +50,31 @@ jobs:
           ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes xxhash softfloat_3e JemallocLibs || true
           cd ../..
 
+      - name: Fetch and Prepare VC++ Runtime
+        run: |
+          mkdir -p app/Madeira/x86_64-vcruntime
+          curl -L -s -o /tmp/vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe || true
+          brew install sevenzip || true
+          7zz x /tmp/vc_redist.x64.exe -o/tmp/vcredist || true
+          7zz x /tmp/vcredist/.rsrc/1033/CABINET/*.cab -oapp/Madeira/x86_64-vcruntime || true
+          touch app/Madeira/x86_64-vcruntime/.keep
+
       - name: Build Unix Libraries (if build scripts present)
         run: |
           chmod +x build/*/build.sh || true
+          mkdir -p app/Madeira
+          if [ -f "app/libdxmt_unix.a" ] && [ ! -f "app/Madeira/libdxmt_combined.a" ]; then
+            cp app/libdxmt_unix.a app/Madeira/libdxmt_combined.a
+          fi
           # Run individual component builds if their base libs need assembly
-          if [ -f "build/dxmt-ios/build.sh" ]; then
-            bash build/dxmt-ios/build.sh || true
+          if [ -f "build/wineserver/build.sh" ]; then
+            bash build/wineserver/build.sh all || true
+          fi
+          if [ -f "build/ntdll-unix/build.sh" ]; then
+            bash build/ntdll-unix/build.sh || true
+          fi
+          if [ -f "build/win32u-unix/build.sh" ]; then
+            bash build/win32u-unix/build.sh || true
           fi
 
       - name: Build Madeira Xcode App
