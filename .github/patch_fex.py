@@ -37,8 +37,8 @@ with open(arm64_cpp, "r", encoding="utf-8", errors="ignore") as f:
 if "VirtualQuery" in ac:
     pat = r"static void IosLogUnimplementedCASPAL\([^{]*\{[\s\S]*?\n\}"
     rep = (
-        "static void IosLogUnimplementedCASPAL(uint32_t Size, uint32_t AddressReg, const uint64_t* GPRs) {\n"
-        "  static uint32_t reports = 0;\n"
+        "static void IosLogUnimplementedCASPAL(uint32_t Size, uint64_t* GPRs, uint32_t AddressReg) {\n"
+        "  static int reports = 0;\n"
         "  if (Size == 0 || (GPRs[AddressReg] & 15) == 0 || reports >= 8) {\n"
         "    return;\n"
         "  }\n"

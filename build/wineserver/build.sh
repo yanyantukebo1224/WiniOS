@@ -16,9 +16,6 @@ mkdir -p "$OBJ_DIR"
 if [ ! -f "$OBJ_DIR/libwineserver.a" ]; then
     if [ -f "$APP_LIB" ]; then
         cp "$APP_LIB" "$OBJ_DIR/libwineserver.a"
-    else
-        echo "No base libwineserver.a found, creating new base..."
-        ar rcs "$OBJ_DIR/libwineserver.a"
     fi
 fi
 
@@ -160,6 +157,15 @@ REPLACEMENTS=(
     "object.o:object.o"
     "async.o:async.o"
 )
+
+if [ ! -f "$OBJ_DIR/libwineserver.a" ]; then
+    echo "=== Building complete base libwineserver.a from Wine server sources ==="
+    for s in "$WINE_SRC"/server/*.c; do
+        b=$(basename "$s" .c)
+        compile_one "$s" "$b" || true
+    done
+    ar rcs "$OBJ_DIR/libwineserver.a" "$OBJ_DIR"/*.o
+fi
 
 for entry in "${REPLACEMENTS[@]}"; do
     new_obj="${entry%%:*}"

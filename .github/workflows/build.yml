@@ -27,8 +27,10 @@ jobs:
 
       - name: Install Build Tools
         run: |
-          brew install ninja cmake llvm
+          brew install ninja cmake llvm bison flex
           echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+          echo "/opt/homebrew/opt/bison/bin" >> $GITHUB_PATH
+          echo "/opt/homebrew/opt/flex/bin" >> $GITHUB_PATH
           python3 -m pip install --break-system-packages packaging || pip3 install packaging || true
 
       - name: Build FEXCore for iOS
@@ -49,8 +51,8 @@ jobs:
             -DENABLE_LTO=OFF \
             -DENABLE_ASSERTIONS=OFF \
             ..
-          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes_128bit xxhash softfloat_3e || ninja -j$(sysctl -n hw.ncpu) FEXCore || true
-          ls -lh FEXCore/Source/libFEXCore*.a || true
+          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes_128bit xxhash softfloat_3e
+          ls -lh FEXCore/Source/libFEXCore*.a
           cd ../..
 
       - name: Fetch and Prepare VC++ Runtime
