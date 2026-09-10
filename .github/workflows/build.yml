@@ -51,8 +51,8 @@ jobs:
             -DENABLE_LTO=OFF \
             -DENABLE_ASSERTIONS=OFF \
             ..
-          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes_128bit xxhash softfloat_3e
-          ls -lh FEXCore/Source/libFEXCore*.a
+          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base JemallocLibs fmt cephes_128bit xxhash softfloat_3e
+          ls -lh FEXCore/Source/lib*.a
           cd ../..
 
       - name: Fetch and Prepare VC++ Runtime
