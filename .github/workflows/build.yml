@@ -116,6 +116,7 @@ jobs:
             bash build/win32u-unix/build.sh || true
           fi
           ls -lh app/Madeira/lib*.a || true
+          python3 .github/patch_macho.py app/Madeira/lib*.a || true
 
       - name: Build Madeira Xcode App
         run: |
