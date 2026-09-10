@@ -52,9 +52,15 @@
 		A1000200 /* LogPattern.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000200 /* LogPattern.swift */; };
 		A1000201 /* LogTail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000201 /* LogTail.swift */; };
 		A1000202 /* FPSOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000202 /* FPSOverlay.swift */; };
+		A1000300 /* GameModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000300 /* GameModel.swift */; };
+		A1000301 /* SteamDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000301 /* SteamDownloader.swift */; };
+		A1000302 /* GameHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000302 /* GameHubView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A2000300 /* GameModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/GameModel.swift"; sourceTree = "<group>"; };
+		A2000301 /* SteamDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/SteamDownloader.swift"; sourceTree = "<group>"; };
+		A2000302 /* GameHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GameHub/GameHubView.swift"; sourceTree = "<group>"; };
 		A2000001 /* MadeiraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MadeiraApp.swift; sourceTree = "<group>"; };
 		A2000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A2000003 /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
@@ -191,6 +197,9 @@
 				A2000006 /* Madeira-Bridging-Header.h */,
 				A2000007 /* Madeira.entitlements */,
 				A2000008 /* Info.plist */,
+				A2000300 /* GameModel.swift */,
+				A2000301 /* SteamDownloader.swift */,
+				A2000302 /* GameHubView.swift */,
 			);
 			path = Madeira;
 			sourceTree = "<group>";
@@ -323,6 +332,9 @@
 				A1000050 /* IOSDisplayShim.m in Sources */,
 				A1000070 /* Winios/Winios.m in Sources */,
 				A1000035 /* StikJITHelper.swift in Sources */,
+				A1000300 /* GameModel.swift in Sources */,
+				A1000301 /* SteamDownloader.swift in Sources */,
+				A1000302 /* GameHubView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

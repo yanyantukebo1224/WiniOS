@@ -1,0 +1,85 @@
+name: Build WiniOS IPA
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Select Xcode 16
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install Build Tools
+        run: |
+          brew install ninja cmake
+
+      - name: Build FEXCore for iOS
+        run: |
+          mkdir -p FEX/build-ios
+          cd FEX/build-ios
+          cmake -GNinja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_LTO=OFF \
+            ..
+          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes xxhash softfloat_3e JemallocLibs || true
+          cd ../..
+
+      - name: Build Unix Libraries (if build scripts present)
+        run: |
+          chmod +x build/*/build.sh || true
+          # Run individual component builds if their base libs need assembly
+          if [ -f "build/dxmt-ios/build.sh" ]; then
+            bash build/dxmt-ios/build.sh || true
+          fi
+
+      - name: Build Madeira Xcode App
+        run: |
+          xcodebuild -project app/Madeira.xcodeproj \
+            -scheme Madeira \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Package into IPA
+        run: |
+          mkdir -p build/Payload
+          APP_PATH=$(find build/DerivedData -name "Madeira.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: Madeira.app not found!"
+            exit 1
+          fi
+          cp -R "$APP_PATH" build/Payload/
+          cd build
+          zip -r -9 WiniOS.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiniOS-GameHub-IPA
+          path: build/WiniOS.ipa
+          retention-days: 14

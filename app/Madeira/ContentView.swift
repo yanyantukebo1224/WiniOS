@@ -851,6 +851,7 @@ struct ContentView: View {
     @State private var debuggerAttached = isDebuggerAttached()
     @ObservedObject private var input = InputSettings.shared
     @State private var pointerPanel = false
+    @State private var showGameHub = true // Default to GameHub launcher!
     @Namespace private var pointerNS
     /// .compact = iPhone landscape: game surface expands, arrow keys appear.
     @Environment(\.verticalSizeClass) private var vSizeClass
@@ -864,34 +865,62 @@ struct ContentView: View {
     }
 
     var body: some View {
-        /* ml658: was NavigationView, which is deprecated and — the reason this
-         * matters — defaults to a SPLIT VIEW on iPad. TARGETED_DEVICE_FAMILY is
-         * "1,2", so iPad is a shipping target, and the whole UI was being forced
-         * into a sidebar/detail arrangement it was never laid out for.
-         * NavigationStack is single-column on every device. Safe here: there are
-         * no NavigationLinks anywhere in the app, so nothing depended on the
-         * two-column selection behaviour. */
         NavigationStack {
             Group {
-                if vSizeClass == .compact {
+                if showGameHub {
+                    GameHubView(
+                        onLaunchGame: { game in
+                            launchGameFromHub(game)
+                        },
+                        onSwitchToDiagnostic: {
+                            withAnimation { showGameHub = false }
+                        }
+                    )
+                } else if vSizeClass == .compact {
                     landscapeBody
                 } else {
                     portraitBody
                 }
             }
-            // Rotation destroys/recreates the UIViewRepresentable across
-            // this if/else (two SwiftUI identities) — HARMLESS since
-            // 2026-07-05: MetalHostView is a process-lifetime singleton;
-            // a fresh placeholder only re-parents the same CAMetalLayer.
-            .navigationTitle("Madeira")
+            .navigationTitle(showGameHub ? "WiniOS" : "Madeira")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(vSizeClass == .compact)
+            .navigationBarHidden(showGameHub || vSizeClass == .compact)
+            .toolbar {
+                if !showGameHub && vSizeClass != .compact {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            withAnimation { showGameHub = true }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("GameHub")
+                            }
+                        }
+                    }
+                }
+            }
             .onAppear {
                 jit_install_trap_handler()
                 entitlements = EntitlementStatus.check()
                 logEntitlementStatus()
             }
         }
+    }
+
+    /// Launch any game selected from the GameHub launcher
+    private func launchGameFromHub(_ game: GameItem) {
+        logStore.log("GameHub: Launching \(game.title) (\(game.exePath))...", level: .info)
+        setenv("MADEIRA_EXE", game.exePath, 1)
+        if !game.arguments.isEmpty {
+            setenv("MADEIRA_ARGS", game.arguments, 1)
+        } else {
+            unsetenv("MADEIRA_ARGS")
+        }
+        unsetenv("MADEIRA_DESKTOP")
+        withAnimation {
+            showGameHub = false
+        }
+        runWineFullSequence()
     }
 
     /// Portrait: classic tooling layout — header, badges, 240pt game strip,

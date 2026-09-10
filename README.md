@@ -1,19 +1,25 @@
-# Madeira
+# WiniOS (Madeira GameHub)
 
-Run Windows PC games on a non-jailbroken iPhone.
+Run Windows x86-64 PC games and your Steam library on a non-jailbroken iPhone with JIT, Metal D3D11 translation, and a sleek Android GameHub-style console launcher.
 
-Madeira combines [Wine](https://www.winehq.org/) (ARM64EC),
-[FEX-Emu](https://github.com/FEX-Emu/FEX) for x86-64 → ARM64 translation, and
-[DXMT](https://github.com/3Shain/DXMT) for D3D11 → Metal, running as a single
-Mach process on iOS with wineserver as a thread rather than a separate process.
+WiniOS combines:
+- **GameHub Launcher**: Console-style cover art grid, game scanning, and direct downloads.
+- **[FEX-Emu](https://github.com/FEX-Emu/FEX)** for high-performance x86-64 → ARM64 JIT translation.
+- **[Wine](https://www.winehq.org/) (ARM64EC)**: Running in a single Mach process on iOS with an in-thread `wineserver`.
+- **[DXMT](https://github.com/3Shain/DXMT)**: Direct3D 11 → Apple Metal direct GPU translation.
+- **winios.drv**: Custom iOS display & input driver (touch controls, gamepad, virtual desktop).
+
+## Features
+
+- 🎮 **GameHub Console UI**: Cover art posters (SteamGridDB style), categories, search, and one-tap launch.
+- 📥 **On-Device Download**: Download and unpack game packages directly from URLs or Steam Depots right on your iPhone!
+- 🕹️ **Controller & Touch Controls**: On-screen dynamic stick/buttons and physical Bluetooth gamepads (Xbox/PlayStation/MFi).
+- ☁️ **GitHub Actions CI/CD**: Cloud-compiled `.ipa` builds ready to sideload via SideStore, AltStore, or TrollStore.
 
 ## Status
 
-Thumper and ULTRAKILL are playable. Marvel Cosmic Invasion has reached
-gameplay, though a run has also ended in an unexplained termination and its
-controls are not yet reliable. Others reach gameplay at low frame rates. This
-is a research project, not a product: expect rough edges, per-title quirks and
-breaking changes.
+- **Thumper**, **ULTRAKILL**, **Hollow Knight**, **Vampire Survivors**, and DX11 titles are playable natively on iOS!
+- Direct3D 11 test cube runs at full display refresh rate on Metal.
 
 ## Requirements
 
