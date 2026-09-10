@@ -27,8 +27,8 @@ jobs:
 
       - name: Install Build Tools
         run: |
-          brew install ninja cmake llvm bison flex
-          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+          brew install ninja cmake llvm@15 bison flex
+          echo "/opt/homebrew/opt/llvm@15/bin" >> $GITHUB_PATH
           echo "/opt/homebrew/opt/bison/bin" >> $GITHUB_PATH
           echo "/opt/homebrew/opt/flex/bin" >> $GITHUB_PATH
           python3 -m pip install --break-system-packages packaging || pip3 install packaging || true
@@ -75,7 +75,7 @@ jobs:
 
       - name: Configure Wine for macOS/iOS headers
         run: |
-          export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/opt/flex/bin:/opt/homebrew/opt/llvm/bin:$PATH"
+          export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/opt/flex/bin:/opt/homebrew/opt/llvm@15/bin:$PATH"
           chmod +x wine/configure || true
           mkdir -p wine/build-macos
           cd wine/build-macos
@@ -97,8 +97,9 @@ jobs:
           chmod -R +x build/ || true
           mkdir -p app/Madeira
           if [ -f "app/libdxmt_unix.a" ]; then
-            echo "Combining libdxmt_unix.a with LLVM static libs..."
-            LLVM_LIBS=$(find /opt/homebrew/opt/llvm/lib -name "libLLVM*.a" 2>/dev/null | tr '\n' ' ')
+            echo "Combining libdxmt_unix.a with LLVM 15 static libs..."
+            LLVM15_DIR=$(brew --prefix llvm@15)
+            LLVM_LIBS=$(find "$LLVM15_DIR/lib" -name "libLLVM*.a" 2>/dev/null | tr '\n' ' ')
             if [ -n "$LLVM_LIBS" ]; then
               xcrun -sdk iphoneos libtool -static -o app/Madeira/libdxmt_combined.a app/libdxmt_unix.a $LLVM_LIBS 2>/dev/null || cp app/libdxmt_unix.a app/Madeira/libdxmt_combined.a
             else
@@ -120,6 +121,7 @@ jobs:
 
       - name: Build Madeira Xcode App
         run: |
+          LLVM15_DIR=$(brew --prefix llvm@15)
           xcodebuild -project app/Madeira.xcodeproj \
             -scheme Madeira \
             -configuration Release \
@@ -129,7 +131,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CLANG_CXX_LANGUAGE_STANDARD="c++20" \
-            OTHER_LDFLAGS="\$(inherited) -L/opt/homebrew/opt/llvm/lib" \
+            OTHER_LDFLAGS="\$(inherited) -L$LLVM15_DIR/lib" \
             ONLY_ACTIVE_ARCH=NO
 
       - name: Package into IPA
