@@ -32,6 +32,13 @@ jobs:
 
       - name: Build FEXCore for iOS
         run: |
+          python3 -c '
+          with open("FEX/CMakeLists.txt", "r") as f:
+              s = f.read()
+          s = s.replace("string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} processor)", "set(CMAKE_SYSTEM_PROCESSOR \"arm64\")\nstring(TOLOWER \"${CMAKE_SYSTEM_PROCESSOR}\" processor)")
+          with open("FEX/CMakeLists.txt", "w") as f:
+              f.write(s)
+          '
           mkdir -p FEX/build-ios
           cd FEX/build-ios
           cmake -GNinja \
@@ -47,7 +54,7 @@ jobs:
             -DENABLE_LTO=OFF \
             -DENABLE_ASSERTIONS=OFF \
             ..
-          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes xxhash softfloat_3e JemallocLibs || true
+          ninja -j$(sysctl -n hw.ncpu) FEXCore FEXCore_Base fmt cephes_128bit xxhash softfloat_3e || ninja -j$(sysctl -n hw.ncpu) FEXCore || true
           cd ../..
 
       - name: Fetch and Prepare VC++ Runtime
@@ -56,7 +63,7 @@ jobs:
           curl -L -s -o /tmp/vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe || true
           brew install sevenzip || true
           7zz x /tmp/vc_redist.x64.exe -o/tmp/vcredist || true
-          7zz x /tmp/vcredist/.rsrc/1033/CABINET/*.cab -oapp/Madeira/x86_64-vcruntime || true
+          find /tmp/vcredist -name "*.cab" -exec 7zz x {} -oapp/Madeira/x86_64-vcruntime/ \; || true
           touch app/Madeira/x86_64-vcruntime/.keep
 
       - name: Build Unix Libraries (if build scripts present)

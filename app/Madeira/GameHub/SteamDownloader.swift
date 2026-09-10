@@ -98,10 +98,12 @@ public final class SteamDownloader: ObservableObject {
         do {
             try fm.createDirectory(at: targetDir, withIntermediateDirectories: true)
             
-            // Unzip command using tar or unzip tool
-            let task = Process()
-            // On iOS inside app sandbox, we can extract zip files or tar
-            // If tar/gz or zip, FileManager or System unar / tar
+            // If single exe or file was downloaded, move it into target directory
+            let destFile = targetDir.appendingPathComponent(downloadedFile.lastPathComponent)
+            if fm.fileExists(atPath: destFile.path) {
+                try? fm.removeItem(at: destFile)
+            }
+            try? fm.moveItem(at: downloadedFile, to: destFile)
             statusMessage = "Finalizing installation..."
             
             // Scan for candidate .exe
