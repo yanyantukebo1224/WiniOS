@@ -102,7 +102,8 @@ public struct GameHubView: View {
             allowsMultipleSelection: false
         ) { result in
             switch result {
-            case .success(let url):
+            case .success(let urls):
+                guard let url = urls.first else { return }
                 importFile(from: url)
             case .failure(let error):
                 importAlertTitle = "ファイル選択エラー"
