@@ -62,6 +62,17 @@ if os.path.exists("wine/configure"):
         wc = wc.replace(old_pe_check, '# bypassed PE check: ' + old_pe_check)
         with open("wine/configure", "w", encoding="utf-8") as f:
             f.write(wc)
-    print("wine/configure patched!")
+print("Patching rpmalloc.c for 454GB regime...")
+rpmalloc_c = "FEX/External/rpmalloc/rpmalloc/rpmalloc.c"
+if os.path.exists(rpmalloc_c):
+    with open(rpmalloc_c, "r", encoding="utf-8", errors="ignore") as f:
+        rc = f.read()
+    if "{0x7080000000ULL, 0x7170000000ULL}" not in rc:
+        old_cand = "{0x7c00000000ULL, 0x7fffffffffULL},"
+        new_cand = old_cand + "\n\t\t{0x7080000000ULL, 0x7170000000ULL},"
+        rc = rc.replace(old_cand, new_cand)
+        with open(rpmalloc_c, "w", encoding="utf-8") as f:
+            f.write(rc)
+    print("rpmalloc.c patched!")
 
 print("All patching complete!")

@@ -162,8 +162,9 @@ jobs:
           done
           install_name_tool -add_rpath "@executable_path/Frameworks" "$EXE" 2>/dev/null || true
           
-          echo "=== Final sanitized dylib dependencies of $EXE ==="
-          otool -L "$EXE" || true
+          echo "=== Applying entitlements to Madeira.app ==="
+          codesign -s - --entitlements app/Madeira/Madeira.entitlements -f build/Payload/Madeira.app || true
+          codesign -d --entitlements :- build/Payload/Madeira.app || true
           
           cd build
           zip -r -9 WiniOS.ipa Payload

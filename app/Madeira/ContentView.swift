@@ -1832,6 +1832,15 @@ struct ContentView: View {
             return
         }
 
+        let currentExe = getenv("MADEIRA_EXE").flatMap { String(cString: $0) } ?? "cube.exe"
+        let isNativeARM64 = currentExe.hasPrefix("cube.exe") || currentExe.contains("aarch64")
+        if !isNativeARM64 && !(entitlements?.extendedVA ?? false) {
+            logStore.log("⚠️ NOTICE: extended-virtual-addressing (64-bit VA) is NOT active!", level: .error)
+            logStore.log("  x86_64 apps/games need 64-bit VA so FEX can map its host arena.", level: .error)
+            logStore.log("  Without 64-bit VA, FEX host allocation may fail (454GB ceiling).", level: .error)
+            logStore.log("  💡 Tip: Install via TrollStore or inject extendedVA via GetMoreRam.", level: .info)
+        }
+
         logStore.log("Running full Wine sequence...")
 
         // Start a main thread heartbeat to diagnose hang
