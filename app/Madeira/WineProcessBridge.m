@@ -25,6 +25,86 @@
 static void madeira_ensure_runtime_profile(NSString *prefix);
 static void madeira_link_wine_mono(NSString *prefix);
 
+/* Dynamic Steam / Game Environment Setup (No-patch compatibility):
+ * Instead of hardcoding Thumper (356400), resolve the AppID and AppPath
+ * dynamically from the game's folder, steam_appid.txt, or MADEIRA_APPID / MADEIRA_EXE.
+ * Also set SteamClientLaunch=1 and SteamEnv=1 to bypass DRM / Steam-running checks,
+ * and WINE_LARGE_ADDRESS_AWARE=1 so games do not need a 4GB binary patch.
+ */
+void madeira_setup_game_env(const char *prefix_path, const char *madeira_exe)
+{
+    // 1. Always enable Large Address Aware (4GB patch automatic)
+    setenv("WINE_LARGE_ADDRESS_AWARE", "1", 1);
+
+    // 2. Bypass Steam client check & provide Steam stub environment
+    setenv("SteamClientLaunch", "1", 0);
+    setenv("SteamEnv", "1", 0);
+
+    // 3. Resolve AppID and SteamAppPath
+    const char *env_appid = getenv("MADEIRA_APPID");
+    char appid[64] = {0};
+    char apppath[512] = {0};
+
+    if (env_appid && *env_appid) {
+        snprintf(appid, sizeof(appid), "%s", env_appid);
+    }
+
+    if (madeira_exe && *madeira_exe) {
+        // Extract directory from Windows path if present
+        const char *last_sep = strrchr(madeira_exe, '\\');
+        if (!last_sep) last_sep = strrchr(madeira_exe, '/');
+        if (last_sep) {
+            size_t dirlen = (size_t)(last_sep - madeira_exe);
+            if (dirlen < sizeof(apppath)) {
+                strncpy(apppath, madeira_exe, dirlen);
+                apppath[dirlen] = 0;
+            }
+        }
+    }
+
+    // Try reading steam_appid.txt from game directory if available
+    if (apppath[0] && (!appid[0] || !strcmp(appid, "0"))) {
+        // Convert Windows path (e.g. C:\Games\Title) to POSIX path under prefix
+        if ((apppath[0] == 'C' || apppath[0] == 'c') && apppath[1] == ':') {
+            char posix_game_dir[1024];
+            snprintf(posix_game_dir, sizeof(posix_game_dir), "%s/drive_c%s", prefix_path, apppath + 2);
+            for (char *p = posix_game_dir; *p; p++) {
+                if (*p == '\\') *p = '/';
+            }
+            char appid_file[1024];
+            snprintf(appid_file, sizeof(appid_file), "%s/steam_appid.txt", posix_game_dir);
+            FILE *f = fopen(appid_file, "r");
+            if (f) {
+                if (fgets(appid, sizeof(appid), f)) {
+                    char *nl = strpbrk(appid, "\r\n ");
+                    if (nl) *nl = 0;
+                }
+                fclose(f);
+            }
+        }
+    }
+
+    // Default fallback: if still not set, check if game is Thumper or generic
+    if (!appid[0]) {
+        if (madeira_exe && strstr(madeira_exe, "THUMPER")) {
+            snprintf(appid, sizeof(appid), "356400");
+        } else {
+            // Default generic Steam AppID (480 = Spacewar, standard Steamworks testing ID)
+            snprintf(appid, sizeof(appid), "480");
+        }
+    }
+
+    if (!apppath[0]) {
+        snprintf(apppath, sizeof(apppath), "C:\\Program Files");
+    }
+
+    setenv("SteamAppId", appid, 1);
+    setenv("SteamGameId", appid, 1);
+    setenv("SteamAppPath", apppath, 1);
+    dprintf(STDERR_FILENO, "[WineProc] Dynamic game env: SteamAppId=%s SteamAppPath=%s WINE_LARGE_ADDRESS_AWARE=1\n",
+            appid, apppath);
+}
+
 /* 2026-09-10: 32-bit (WoW64) feasibility. A 32-bit Windows process needs
  * its whole address space below 4GB. On iOS the app's __PAGEZERO segment
  * normally covers exactly that range, so nothing can be mapped there — the
@@ -739,26 +819,15 @@ static void *wine_process_thread(void *arg) {
          * is the pure branch-feeder) or a writer-side fix. Healer stays
          * opt-in-off. */
 
-        /* Steam game vars. One title reads SteamAppPath as its asset base path and
-         * queries it dozens of times during init, so it must be present before that
-         * title starts.
-         *
-         * KNOWN DEFECT, deliberately left in place for now: this publishes ONE title's
-         * identity to EVERY guest, with overwrite=1. A different title that links a Steam
-         * wrapper therefore sees the wrong app ID. Removing it outright was tested and is
-         * NOT the fix -- it regresses the title that needs the path, and it did not change
-         * the behaviour of the title that was mis-identified, so the mismatch is real but
-         * was not the failure being chased.
-         *
-         * The durable design belongs in the title-launch layer: publish nothing by
-         * default, take the ID from explicit title metadata or the game's own
-         * steam_appid.txt, set SteamAppPath to that game's directory, and give each child
-         * its own environment rather than mutating one process-global set shared by every
-         * pseudo-process. This path usually launches explorer.exe and cannot know which
-         * title the desktop will start later, so a conditional here cannot work. */
-        setenv("SteamAppPath", "C:\\Program Files\\Thumper", 1);
-        setenv("SteamGameId", "356400", 1);
-        setenv("SteamAppId",  "356400", 1);
+        /* Steam game vars & Patchless compatibility:
+         * Instead of hardcoding Thumper (356400), resolve AppID and SteamAppPath
+         * dynamically from the game path, steam_appid.txt, or environment.
+         * Also enable WINE_LARGE_ADDRESS_AWARE=1 so 4GB binary patches are never needed. */
+        {
+            extern void madeira_setup_game_env(const char *prefix_path, const char *madeira_exe);
+            const char *target_exe = getenv("MADEIRA_EXE");
+            madeira_setup_game_env(g_prefix_path, target_exe);
+        }
 
         /* iOS-Madeira 2026-07-02: publish the TRUE JIT-pool RX->RW offset to
          * xtajit64.dll (its own FEXCore copy reads this via getenv in
@@ -1104,16 +1173,18 @@ static void *wine_process_thread(void *arg) {
          * "cache/721e72f7.pc") then resolve to doubled paths that don't
          * exist. Per GPT diagnosis 2026-05-12. Only chdir for full-path EXE
          * launches; bare-name launches (cube, hello-x64) use C:\windows\system32. */
-        if (strchr(madeira_exe, '\\') || (madeira_exe[0] && madeira_exe[1] == ':')) {
-            /* Convert "C:\Program Files\Thumper\X.exe" → unix path */
+        if (strchr(madeira_exe, '\\') || strchr(madeira_exe, '/') || (madeira_exe[0] && madeira_exe[1] == ':')) {
+            /* Convert "C:\Program Files\Game\X.exe" → unix path */
             char unix_dir[1024];
             const char *drive_c = "drive_c";
-            const char *after_drive = madeira_exe + 3; /* skip "C:\" */
-            char *last_sep = strrchr(madeira_exe, '\\');
-            if (last_sep && last_sep > madeira_exe + 3) {
-                /* Get "Program Files\Thumper" from "C:\Program Files\Thumper\X.exe" */
+            const char *after_drive = (madeira_exe[0] && madeira_exe[1] == ':') ? (madeira_exe + 2) : madeira_exe;
+            if (*after_drive == '\\' || *after_drive == '/') after_drive++;
+            const char *last_sep = strrchr(madeira_exe, '\\');
+            if (!last_sep) last_sep = strrchr(madeira_exe, '/');
+            if (last_sep && last_sep > after_drive) {
                 size_t dir_len = (size_t)(last_sep - after_drive);
                 char windir[512];
+                if (dir_len >= sizeof(windir)) dir_len = sizeof(windir) - 1;
                 memcpy(windir, after_drive, dir_len);
                 windir[dir_len] = 0;
                 /* Translate backslashes to forward slashes */

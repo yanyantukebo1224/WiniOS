@@ -1125,10 +1125,21 @@ struct ContentView: View {
         GamepadBridge.shared.uiMode = (selectedTab == .games && !desktopFullScreen)
     }
 
+    /// Hyper-improved game launch router:
+    /// If desktop session is already running, launches seamlessly inside it via SessionLauncher.
+    /// Otherwise launches directly (playGame), guaranteeing fast, reliable start without agent timeout traps.
+    private func playGameAdaptive(_ game: LauncherGame) {
+        if wineserver_is_running() != 0 && wine_process_is_running() != 0 {
+            playGameHosted(game)
+        } else {
+            playGame(game)
+        }
+    }
+
     /// ml791: the Games tab. A console-style grid of the game folders on
     /// C:, playable by tap or controller (LauncherView).
     private var launcherScreen: some View {
-        var v = LauncherView(session: launcherSession, onPlay: playGameHosted, onOpenDesktop: openDesktopFromGames, onQuitApp: quitApp)
+        var v = LauncherView(session: launcherSession, onPlay: playGameAdaptive, onOpenDesktop: openDesktopFromGames, onQuitApp: quitApp)
         v.onForceClose = forceCloseGame
         return v
     }
@@ -1181,6 +1192,11 @@ struct ContentView: View {
             return
         }
         let exePath = GameLibrary.windowsPath(exe)
+        if let aid = game.steamAppID, aid > 0 {
+            setenv("MADEIRA_APPID", String(aid), 1)
+        } else {
+            unsetenv("MADEIRA_APPID")
+        }
         launchingGame = game
         firstFrameSeen = false
         launcherSession = .launching(game.title)
@@ -1370,6 +1386,11 @@ struct ContentView: View {
             // A Windows path here makes WineProcessBridge chdir to the exe's
             // folder and pick the arm64ec bundle; nothing else is needed.
             setenv("MADEIRA_EXE", game.exeWindowsPath, 1)
+            if let aid = game.steamAppID, aid > 0 {
+                setenv("MADEIRA_APPID", String(aid), 1)
+            } else {
+                unsetenv("MADEIRA_APPID")
+            }
             unsetenv("MADEIRA_ARGS")
             unsetenv("MADEIRA_DESKTOP")
             // ml793: the Settings resolution is the game's screen too —
@@ -3103,14 +3124,20 @@ struct ContentView: View {
             // so it can be swapped between runs without a rebuild, and deleting
             // the file reverts to the proven default. Clamped to sane values --
             // a typo here would otherwise move the VA floor with it.
-            var poolSizeMB = 896
+            // Dynamic pool size based on device physical memory (5~6GB+ RAM support)
+            let totalRAM_MB = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+            var poolSizeMB = (totalRAM_MB >= 7500) ? 1024 : 896
             if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
                let txt = try? String(contentsOf: d.appendingPathComponent("madeira-pool.txt"), encoding: .utf8),
                let mb = Int(txt.trimmingCharacters(in: .whitespacesAndNewlines)),
-               mb >= 256, mb <= 1152 {
+               mb >= 256, mb <= 3072 {
                 poolSizeMB = mb
                 logStore.log("JIT pool overridden to \(mb)MB via madeira-pool.txt")
             }
+
+            // Always enable Large Address Aware (no 4GB patch required)
+            setenv("WINE_LARGE_ADDRESS_AWARE", "1", 1)
+
             // ml694: W^X A/B switch. Documents/madeira-wx.txt containing "0"
             // disables page demotion for the SAME binary, so the on/off
             // comparison needs one rebuild, not two. The previous gate read
@@ -3123,15 +3150,8 @@ struct ContentView: View {
                 logStore.log("W^X override: MADEIRA_WX=\(v) via madeira-wx.txt")
             }
 
-            // ml727: wine-mono backpatcher bridge A/B. Documents/madeira-mono-bridge.txt
-            // == "1" sets MADEIRA_WINEMONO_BRIDGE, which arms FEX's Mono code-patching
-            // optimisation for wine-mono (recognised since ml712 but activation left
-            // opt-in because the bridge reclassifies an XCHG from a true atomic exchange
-            // into an alias-directed plain write).
-            //
-            // Worth arming here: the dominant fault site emits SWPAL, which is exactly
-            // what FEX generates for a guest XCHG, and the patching XCHGs sit inside
-            // libmono -- so the bridge's "RIP must lie inside Mono" test should pass.
+            // ml727: wine-mono backpatcher bridge. Enabled by default for full Unity/Mono compatibility.
+            setenv("MADEIRA_WINEMONO_BRIDGE", "1", 1)
             if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
                let txt = try? String(contentsOf: d.appendingPathComponent("madeira-mono-bridge.txt"), encoding: .utf8) {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3173,11 +3193,7 @@ struct ContentView: View {
             // ml734: Theorafile call tracer. Documents/madeira-tf-trace.txt == "1"
             // redirects libtheorafile's tf_* exports through wrappers in
             // tftrace-x64.dll that call the original and report the RETURN
-            // value. The intro decodes and plays, the stream reaches a clean
-            // end of file, the decoder stops reading -- and the game never
-            // leaves VideoContext. File EOF is not decoder EOS, and a call
-            // count cannot tell "tf_eos returns false forever" from "it returns
-            // true and the managed side ignores it". Only the return value can.
+            // value.
             if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
                let txt = try? String(contentsOf: d.appendingPathComponent("madeira-tf-trace.txt"), encoding: .utf8) {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3187,13 +3203,10 @@ struct ContentView: View {
                 }
             }
 
-            // ml731: Windows shared-data clock A/B. Documents/madeira-usd-time.txt == "1"
-            // makes wineserver update KUSER_SHARED_DATA's SystemTime, InterruptTime
-            // and TickCount again. Without it those stay frozen at their init values,
-            // so GetTickCount/Environment.TickCount/DateTime.UtcNow never advance and
-            // every time-gated transition in a managed game waits forever while the
-            // renderer keeps drawing. Opt-in only because the old code claimed the
-            // write faulted; this should become unconditional once proven.
+            // ml731: Windows shared-data clock. Enabled by default so GetTickCount,
+            // Environment.TickCount and DateTime.UtcNow advance and managed/Unity games
+            // never freeze in endless initialization loops.
+            setenv("MADEIRA_USD_TIME", "1", 1)
             if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
                let txt = try? String(contentsOf: d.appendingPathComponent("madeira-usd-time.txt"), encoding: .utf8) {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -83,7 +83,8 @@ static void *wineserver_thread_func(void *arg) {
         // Also set up logging for wineserver C code (main_ios.c, fd_ios.c, request_ios.c)
         wineserver_log_set_file(logPath.UTF8String);
 
-        // Redirect wineserver stderr to log file
+        // Redirect wineserver stderr to log file (DISABLED to prevent memory explosion on iOS)
+        /*
         {
             int logfd = open(logPath.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644);
             if (logfd >= 0) {
@@ -91,6 +92,7 @@ static void *wineserver_thread_func(void *arg) {
                 close(logfd);
             }
         }
+        */
 
         // Test that ws_log works from here
         extern void ws_log(const char *fmt, ...);

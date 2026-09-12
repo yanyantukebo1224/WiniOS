@@ -201,6 +201,43 @@ static WCHAR *utf8_to_wide( const char *s )
     return w;
 }
 
+static void apply_game_environment( const WCHAR *dir )
+{
+    WCHAR appid_path[MAX_PATH];
+    WCHAR appid[64] = {0};
+    HANDLE h;
+
+    if (dir && *dir)
+    {
+        swprintf( appid_path, MAX_PATH, L"%ls\\steam_appid.txt", dir );
+        h = CreateFileW( appid_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+        if (h != INVALID_HANDLE_VALUE)
+        {
+            char buf[64] = {0};
+            DWORD got = 0;
+            if (ReadFile( h, buf, sizeof(buf) - 1, &got, NULL ) && got > 0)
+            {
+                char *p = strpbrk( buf, "\r\n " );
+                if (p) *p = 0;
+                MultiByteToWideChar( CP_UTF8, 0, buf, -1, appid, 64 );
+            }
+            CloseHandle( h );
+        }
+    }
+
+    if (!appid[0])
+    {
+        wcscpy( appid, L"480" ); /* Fallback standard Steam AppID */
+    }
+
+    SetEnvironmentVariableW( L"SteamAppId", appid );
+    SetEnvironmentVariableW( L"SteamGameId", appid );
+    if (dir && *dir) SetEnvironmentVariableW( L"SteamAppPath", dir );
+    SetEnvironmentVariableW( L"SteamClientLaunch", L"1" );
+    SetEnvironmentVariableW( L"SteamEnv", L"1" );
+    SetEnvironmentVariableW( L"WINE_LARGE_ADDRESS_AWARE", L"1" );
+}
+
 /* Start a program; returns the pid or 0 (GetLastError() set). */
 static DWORD start_process( const WCHAR *exe, const WCHAR *args, const WCHAR *dir )
 {
@@ -211,6 +248,9 @@ static DWORD start_process( const WCHAR *exe, const WCHAR *args, const WCHAR *di
     DWORD pid = 0;
 
     if (!cmdline) return 0;
+
+    apply_game_environment( dir );
+
     /* Quote the exe: game folders have spaces. */
     /* %ls means a wide string under both MSVC and ISO wide-printf rules. */
     swprintf( cmdline, len, L"\"%ls\"%ls%ls", exe, (args && *args) ? L" " : L"", (args && *args) ? args : L"" );

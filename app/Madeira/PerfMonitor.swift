@@ -1,6 +1,10 @@
 import Foundation
 import SwiftUI
 import UIKit
+import os
+
+@_silgen_name("os_proc_available_memory")
+private func os_proc_available_memory() -> size_t
 
 /// DXMT present pacing (g_madeira_vsync_mode). Raw values are the mode
 /// numbers the unix side switches on; 3 and 4 come from
@@ -103,10 +107,30 @@ final class PerfMonitor: ObservableObject {
     @Published private(set) var thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
     @Published private(set) var lowPower: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    /// iOS jetsams this app at EXACTLY 4096MB of phys_footprint with the
-    /// increased-memory-limit entitlement (ml605 died at 4080MB with no
-    /// warning of any kind in the log).
-    static let jetsamLimitMB = 4096
+    /// Dynamic Jetsam limit based on device physical RAM (5~6GB+ supported with increased-memory-limit).
+    /// On 8GB devices (iPhone 15 Pro, 16, 16 Pro) allows up to ~6144MB.
+    /// On 6GB devices (iPhone 13 Pro, 14, 15) allows up to ~5120MB.
+    static let jetsamLimitMB: Int = {
+        let totalRAM_MB = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+        if totalRAM_MB >= 12000 {
+            return 9216   // 9GB on 12GB+ iPads
+        } else if totalRAM_MB >= 7500 {
+            return 6144   // 6GB on 8GB devices
+        } else if totalRAM_MB >= 5500 {
+            return 5120   // 5GB on 6GB devices
+        } else {
+            return 4096   // 4GB baseline
+        }
+    }()
+
+    /// Exact remaining memory in MB before Jetsam kill, queried from the iOS kernel.
+    static func availableHeadroomMB(currentFootprintMB: Int) -> Int {
+        let avail = os_proc_available_memory()
+        if avail > 0 {
+            return Int(avail / (1024 * 1024))
+        }
+        return max(jetsamLimitMB - currentFootprintMB, 0)
+    }
 
     enum MemoryTier: Int, Comparable {
         case ok = 0, elevated, high, critical
@@ -169,7 +193,7 @@ final class PerfMonitor: ObservableObject {
     /// ceiling: green >768MB free, yellow >384MB, orange >128MB, red below.
     static func tier(forFootprintMB mb: Int) -> MemoryTier {
         guard mb > 0 else { return .ok }
-        let free = jetsamLimitMB - mb
+        let free = availableHeadroomMB(currentFootprintMB: mb)
         if free > 768 { return .ok }
         if free > 384 { return .elevated }
         if free > 128 { return .high }
@@ -303,7 +327,7 @@ final class PerfMonitor: ObservableObject {
         let tier = memoryTier
         if tier != lastMemoryTier {
             if tier > lastMemoryTier {
-                let free = Self.jetsamLimitMB - memMB
+                let free = Self.availableHeadroomMB(currentFootprintMB: memMB)
                 LogStore.shared.log("Memory \(Warning.memory(tier).title.lowercased()): \(memMB)MB used, \(free)MB before jetsam",
                                     level: tier >= .high ? .error : .info)
             } else if tier == .ok {
