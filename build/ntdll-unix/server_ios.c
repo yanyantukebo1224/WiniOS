@@ -2825,8 +2825,12 @@ void server_init_process_done(void)
                 thread_resume(wine_mach_thread);
             };
 
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC),
-                dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{ sample_thread(2); });
+            int intervals[] = { 2, 4, 8, 15, 30 };
+            for (int si = 0; si < sizeof(intervals)/sizeof(intervals[0]); si++) {
+                int sec = intervals[si];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)sec * NSEC_PER_SEC),
+                    dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{ sample_thread(sec); });
+            }
         }
 
         /* iOS-Madeira 2026-07-03 sampling profiler for the 30 FPS hunt.

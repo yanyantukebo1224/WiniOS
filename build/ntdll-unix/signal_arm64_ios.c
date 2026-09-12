@@ -887,6 +887,58 @@ static void ios_lock_census(void)
                 (unsigned long long)frames[4], (unsigned long long)frames[5],
                 (unsigned long long)frames[6], (unsigned long long)frames[7]);
         if (total_logged >= 60) return;
+
+        /* ml790: Single-thread deadlock breaker.
+         * If there is only 1-2 active Wine threads, and this thread is parked in __ulock_wait
+         * with an alert futex at st.__x[1], nobody will ever wake it if it is a self-deadlock
+         * or missing device/PnP waiter. Detect consecutive stalls on the same futex and safely kick it. */
+        {
+            static struct { uint64_t futex; uint64_t pc; int strikes; } s_stall_tracker[8];
+            int t;
+            for (t = 0; t < 8; t++)
+            {
+                if (s_stall_tracker[t].futex == st.__x[1] && s_stall_tracker[t].pc == (uint64_t)arm_thread_state64_get_pc( st ))
+                {
+                    s_stall_tracker[t].strikes++;
+                    if (s_stall_tracker[t].strikes >= 2 && count <= 2)
+                    {
+                        extern int __ulock_wake(uint32_t operation, void *addr, uint64_t wake_value);
+                        extern int ios_alert_waiter_lookup( unsigned int tid, const void **addr, int *age_s, int *inf );
+                        uint32_t ctid = 0;
+                        const void *waddr = NULL;
+                        int wage = 0, winf = 0;
+                        if (ios_thread_registry[i].teb)
+                        {
+                            mach_vm_size_t sgot = 0;
+                            mach_vm_read_overwrite( mach_task_self(), (mach_vm_address_t)(ios_thread_registry[i].teb + 0x48), 4,
+                                                    (mach_vm_address_t)&ctid, &sgot );
+                        }
+                        if (ctid) ios_alert_waiter_lookup( ctid, &waddr, &wage, &winf );
+
+                        dprintf( 2, "[deadlock-breaker] Thread idx=%d port=0x%x tid=%04x stuck in __ulock_wait for %d strikes (futex=%p wait_addr=%p inf=%d) — kicking alert futex!\n",
+                                 i, cand, ctid, s_stall_tracker[t].strikes, (void *)st.__x[1], waddr, winf );
+
+                        /* Set futex to 1 and wake */
+                        if (st.__x[1] > 0x1000)
+                        {
+                            uint32_t one = 1;
+                            vm_write( mach_task_self(), (vm_address_t)st.__x[1], (vm_offset_t)&one, sizeof(one) );
+                            __ulock_wake( 0x00000001 /* UL_COMPARE_AND_WAIT */, (void *)st.__x[1], 0 );
+                        }
+                        s_stall_tracker[t].strikes = 0;
+                    }
+                    break;
+                }
+            }
+            if (t == 8)
+            {
+                static int next_slot;
+                int slot = (next_slot++) % 8;
+                s_stall_tracker[slot].futex = st.__x[1];
+                s_stall_tracker[slot].pc = (uint64_t)arm_thread_state64_get_pc( st );
+                s_stall_tracker[slot].strikes = 1;
+            }
+        }
     }
 }
 

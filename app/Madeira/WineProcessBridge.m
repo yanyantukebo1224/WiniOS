@@ -42,6 +42,10 @@ void madeira_setup_game_env(const char *prefix_path, const char *madeira_exe)
     setenv("MADEIRA_WINEMONO_BRIDGE", "1", 1);
     setenv("FNA3D_FORCE_DRIVER", "D3D11", 1);
 
+    // Prevent DirectInput / SetupAPI / rawinput from stalling enumerating missing iOS HID nodes
+    setenv("WINE_DISABLE_RAWINPUT", "1", 1);
+    setenv("SDL_JOYSTICK_DISABLE", "1", 1);
+
     // 3. Bypass Steam client check & provide Steam stub environment
     setenv("SteamClientLaunch", "1", 0);
     setenv("SteamEnv", "1", 0);

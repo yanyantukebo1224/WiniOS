@@ -41,6 +41,9 @@ final class MetalHostView: UIView {
         metalLayer.device = MTLCreateSystemDefaultDevice()
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = true
+        // Avoid indefinite blocking in [CAMetalLayer nextDrawable] which freezes the Wine thread
+        metalLayer.allowsNextDrawableTimeout = true
+        LogStore.shared.log("MetalLayer: allowsNextDrawableTimeout=true (prevent deadlocks)")
         // 2026-07-03 MeloNX trick: displaySyncEnabled is macOS-public but
         // exists as PRIVATE API on iOS. Disabling it takes our presents out
         // of the display-sync scheduling machinery — the thing that has been

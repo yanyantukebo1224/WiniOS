@@ -714,7 +714,7 @@ index 86398e8b272..f9d443a6f3d 100644
 +        unsigned int w0 = 0xdeaddead, w1 = 0xdeaddead;
 +        if (!a) continue;
 +        age = (now.QuadPart - (LONGLONG)ios_alert_waiters[i].since) / 10000000;
-+        if (age < 60) continue;
++        if (age < 2) continue;
 +        shown++;
 +        /* safe-probe the lock word: msync rejects unmapped pages (Darwin
 +         * returns ENOMEM).  ml442: read the CONTAINING aligned word — SRW and
