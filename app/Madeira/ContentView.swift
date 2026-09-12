@@ -1438,8 +1438,10 @@ struct ContentView: View {
             // ml796: keep the loading screen up until the game has presented
             // a couple of frames (or it died first).
             let presents0 = madeira_get_present_count()
-            while wine_process_is_running() != 0 && madeira_get_present_count() < presents0 + 2 {
+            var waitedPresents = 0.0
+            while wine_process_is_running() != 0 && madeira_get_present_count() < presents0 + 2 && waitedPresents < 10.0 {
                 Thread.sleep(forTimeInterval: 0.25)
+                waitedPresents += 0.25
             }
             DispatchQueue.main.async {
                 self.firstFrameSeen = true

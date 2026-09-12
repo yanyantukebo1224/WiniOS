@@ -36,11 +36,17 @@ void madeira_setup_game_env(const char *prefix_path, const char *madeira_exe)
     // 1. Always enable Large Address Aware (4GB patch automatic)
     setenv("WINE_LARGE_ADDRESS_AWARE", "1", 1);
 
-    // 2. Bypass Steam client check & provide Steam stub environment
+    // 2. Fix Mono/Unity GC thread-inspection deadlock & timer stall
+    setenv("MADEIRA_CTX_FRAME", "1", 1);
+    setenv("MADEIRA_USD_TIME", "1", 1);
+    setenv("MADEIRA_WINEMONO_BRIDGE", "1", 1);
+    setenv("FNA3D_FORCE_DRIVER", "D3D11", 1);
+
+    // 3. Bypass Steam client check & provide Steam stub environment
     setenv("SteamClientLaunch", "1", 0);
     setenv("SteamEnv", "1", 0);
 
-    // 3. Resolve AppID and SteamAppPath
+    // 4. Resolve AppID and SteamAppPath
     const char *env_appid = getenv("MADEIRA_APPID");
     char appid[64] = {0};
     char apppath[512] = {0};
@@ -1144,6 +1150,38 @@ static void *wine_process_thread(void *arg) {
         char *extra_argv[16] = {0};
         int extra_argc = 0;
         const char *madeira_args = getenv("MADEIRA_ARGS");
+        static char auto_unity_args[256];
+        if (!madeira_args || !*madeira_args) {
+            // Auto-detect Unity games: check if directory has UnityPlayer.dll
+            char posix_dir[1024] = {0};
+            if ((exe_path[0] == 'C' || exe_path[0] == 'c') && exe_path[1] == ':') {
+                const char *last_sep = strrchr(exe_path, '\\');
+                if (!last_sep) last_sep = strrchr(exe_path, '/');
+                if (last_sep && last_sep > exe_path + 2) {
+                    size_t dlen = (size_t)(last_sep - (exe_path + 2));
+                    char windir[512] = {0};
+                    if (dlen < sizeof(windir)) {
+                        memcpy(windir, exe_path + 2, dlen);
+                        for (char *p = windir; *p; p++) if (*p == '\\') *p = '/';
+                        snprintf(posix_dir, sizeof(posix_dir), "%s/drive_c%s", g_prefix_path, windir);
+                    }
+                }
+            }
+            if (posix_dir[0]) {
+                char unity_chk[1024];
+                snprintf(unity_chk, sizeof(unity_chk), "%s/UnityPlayer.dll", posix_dir);
+                if (access(unity_chk, F_OK) == 0) {
+                    const char *sw = getenv("MADEIRA_SCREEN_W");
+                    const char *sh = getenv("MADEIRA_SCREEN_H");
+                    int w = sw ? atoi(sw) : 960;
+                    int h = sh ? atoi(sh) : 540;
+                    snprintf(auto_unity_args, sizeof(auto_unity_args),
+                             "-force-d3d11 -screen-fullscreen 0 -screen-width %d -screen-height %d", w, h);
+                    madeira_args = auto_unity_args;
+                    dprintf(STDERR_FILENO, "[WineProc] Auto-detected Unity game! Injected: %s\n", auto_unity_args);
+                }
+            }
+        }
         if (madeira_args && *madeira_args) {
             strncpy(args_buf, madeira_args, sizeof(args_buf) - 1);
             args_buf[sizeof(args_buf) - 1] = 0;
