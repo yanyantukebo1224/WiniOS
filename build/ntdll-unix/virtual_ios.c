@@ -4390,7 +4390,17 @@ static const ULONG_PTR ios_spill_cap = 0x7800000000;
  * demand at 3 x 16GB, and slots 0-2 (0x7000000000/0x7400000000/0x7800000000)
  * cover exactly that, leaving [0x7C00000000, 0x8000000000) = 16GB for steering --
  * enough for the ~14GB of 512MB reserves this workload makes. */
-static const ULONG_PTR ios_steer_slot = 0x7C00000000;
+static inline ULONG_PTR get_ios_steer_slot(void)
+{
+    if ((ULONG_PTR)host_addr_space_limit && (ULONG_PTR)host_addr_space_limit <= 0x7C00000000ULL)
+    {
+        /* 454GB regime: top slot 0x7C00000000 does not exist.
+         * Steer into safe lower zone [0x5000000000..0x7000000000) (320GB-448GB) */
+        return 0x5000000000ULL;
+    }
+    return 0x7C00000000ULL;
+}
+#define ios_steer_slot (get_ios_steer_slot())
 
 /* ml173 THREAD-AWARE RECLAMATION of steered reserves (task #35/#36).
  *
@@ -9802,7 +9812,43 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size,
              * the unclamped kernel pick below. Only constraints WE added are
              * dropped — a caller-supplied limit_high never sets
              * ceiling_relaxable, so its contract still holds. */
-            if (!ceiling_relaxable) return STATUS_NO_MEMORY;
+            if (!ceiling_relaxable)
+            {
+                /* ml800 (454GB regime fallback):
+                 * When a caller specifies limit_low (e.g. FEX requesting the 0x7100000000 band,
+                 * which only has ~2GB before the 454GB ceiling and easily fills up with 260+ views),
+                 * map_free_area fails and returning STATUS_NO_MEMORY causes callers like FEX's ThreadInit()
+                 * to crash immediately via NULL pointer dereference ('no unconstrained fallback by design').
+                 * A fallback allocation in available host memory is infinitely better than an instant fatal crash!
+                 * Try an alternative safe host zone (e.g. 128GB..448GB) that is away from guest memory. */
+                if (limit_low >= 0x100000000ULL)
+                {
+                    void *alt_start = (void *)0x2000000000ULL; /* 128GB */
+                    void *alt_end   = (void *)0x7000000000ULL; /* 448GB */
+                    if (alt_end > host_addr_space_limit) alt_end = host_addr_space_limit;
+                    if ((char *)alt_end > (char *)alt_start + host_size)
+                    {
+                        ptr = map_free_area( alt_start, alt_end, host_size, top_down, unix_prot, align_mask );
+                    }
+                    if (!ptr)
+                    {
+                        /* If 128-448GB fails, fall back to any space above 4GB */
+                        alt_start = (void *)0x100000000ULL;
+                        alt_end   = min( user_space_limit, host_addr_space_limit );
+                        if ((char *)alt_end > (char *)alt_start + host_size)
+                        {
+                            ptr = map_free_area( alt_start, alt_end, host_size, top_down, unix_prot, align_mask );
+                        }
+                    }
+                    if (ptr)
+                    {
+                        dprintf( 2, "[va-fallback] ml800 454GB SAVED from NULL crash: requested limit_low=%p size=%p -> granted %p..%p\n",
+                                 (void *)limit_low, (void *)size, ptr, (char *)ptr + size );
+                        goto done;
+                    }
+                }
+                return STATUS_NO_MEMORY;
+            }
             start = address_space_start;
             end = min( user_space_limit, host_addr_space_limit );
             if (limit_low && (void *)limit_low > start) start = (void *)limit_low;
@@ -10886,10 +10932,13 @@ static void *get_host_addr_space_limit(void)
          * hint to be honoured. It is EXCLUSIVE, which is what is_beyond_limit()
          * wants, matching the ml122 note above.
          *
-         * Only ever RAISE the walk's answer, never lower it: the walk is proven
-         * on hardware, and a device reporting a small or bogus max_address must
-         * not shrink a limit that already works. Both values are logged so the
-         * two can be compared on any device. */
+         * ml800: RESPECT THE KERNEL'S REAL CEILING (454GB REGIME FIX).
+         * The power-of-two walk above can only conclude powers of two (e.g. 512GB for 256GB+).
+         * On iOS without extended-virtual-addressing, the kernel's real map ceiling is
+         * ~454GB (0x7180000000). Addresses above kern do NOT exist in the kernel map,
+         * so using walked (512GB) causes Wine/FEX to attempt impossible allocations
+         * in [454GB..512GB) that fail and crash the emulator.
+         * When kern is valid, we MUST use it if it is lower than walked, or if it is higher. */
         void *walked = (void *)(addr << 1);
         task_vm_info_data_t vmi;
         mach_msg_type_number_t cnt = TASK_VM_INFO_COUNT;
@@ -10898,11 +10947,12 @@ static void *get_host_addr_space_limit(void)
         {
             void *kern = (void *)(uintptr_t)vmi.max_address;
 
-            dprintf( 2, "[va-limit] ml749 walk=%p kernel_max=%p -> %s\n",
-                     walked, kern, kern > walked ? "USING KERNEL (walk underestimated)" : "keeping walk" );
-            if (kern > walked && (uintptr_t)kern >= 0x100000000ULL) return kern;
+            dprintf( 2, "[va-limit] ml800 walk=%p kernel_max=%p -> %s\n",
+                     walked, kern, kern < walked ? "CLAMPING TO KERNEL (walk exceeded 454GB ceiling)"
+                                 : (kern > walked ? "USING KERNEL (walk underestimated)" : "exact match") );
+            if ((uintptr_t)kern >= 0x100000000ULL) return kern;
         }
-        else dprintf( 2, "[va-limit] ml749 walk=%p kernel_max=UNAVAILABLE -> keeping walk\n", walked );
+        else dprintf( 2, "[va-limit] ml800 walk=%p kernel_max=UNAVAILABLE -> keeping walk\n", walked );
 
         return walked;
     }
