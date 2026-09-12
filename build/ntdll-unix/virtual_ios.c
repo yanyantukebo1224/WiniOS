@@ -4390,6 +4390,8 @@ static const ULONG_PTR ios_spill_cap = 0x7800000000;
  * demand at 3 x 16GB, and slots 0-2 (0x7000000000/0x7400000000/0x7800000000)
  * cover exactly that, leaving [0x7C00000000, 0x8000000000) = 16GB for steering --
  * enough for the ~14GB of 512MB reserves this workload makes. */
+static void *host_addr_space_limit;  /* top of the host virtual address space */
+
 static inline ULONG_PTR get_ios_steer_slot(void)
 {
     if ((ULONG_PTR)host_addr_space_limit && (ULONG_PTR)host_addr_space_limit <= 0x7C00000000ULL)
@@ -4713,7 +4715,7 @@ static void *user_space_limit    = (void *)0x7fff0000;
 static void *working_set_limit   = (void *)0x7fff0000;
 #endif
 
-static void *host_addr_space_limit;  /* top of the host virtual address space */
+/* host_addr_space_limit declared earlier above get_ios_steer_slot */
 
 static struct file_view *arm64ec_view;
 
